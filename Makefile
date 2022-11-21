@@ -7,6 +7,9 @@ stop:
 
 build:
 	go build -o ./bin/main ./cmd/main.go
+
 local: build
 	./bin/main
 	
+migrate-local:
+	docker-compose -f docker/docker-compose.migrations.yml --env-file .env up

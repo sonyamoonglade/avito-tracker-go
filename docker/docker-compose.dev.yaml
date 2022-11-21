@@ -8,5 +8,6 @@ services:
     restart: on-failure
     environment:
        - DB_URL
+       - BOT_TOKEN
     volumes:
       - ../:/app

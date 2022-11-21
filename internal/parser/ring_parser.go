@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"parser/internal/timer"
 	"sync"
 	"time"
@@ -55,6 +56,8 @@ func (rp *RingParser) Out() chan *ParseResult {
 
 func (rp *RingParser) parse() {
 
+	fmt.Println("start parsing...")
+
 	rp.mu.Lock()
 	url := rp.targets[rp.offset]
 
@@ -78,6 +81,7 @@ func (rp *RingParser) parse() {
 		return
 	}
 
+	fmt.Println("ok")
 	rp.out <- &ParseResult{
 		Title: result.Title,
 		Price: result.Price,

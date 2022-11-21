@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	domain "parser/internal/domain/models"
-	"parser/pkg/postgres"
+	"parser/internal/postgres"
 
 	sq "github.com/Masterminds/squirrel"
 )
@@ -53,8 +53,8 @@ func (s *advertRepo) GetByURL(ctx context.Context, url string) (*domain.Advert, 
 
 func (s *advertRepo) Insert(ctx context.Context, ad *domain.Advert) error {
 	sql, args, err := sq.Insert("adverts").
-		Columns("last_price", "url").
-		Values(ad.LastPrice, ad.URL).
+		Columns("last_price", "current_price", "url").
+		Values(ad.CurrentPrice, ad.CurrentPrice, ad.URL).
 		ToSql()
 
 	fmt.Println(sql)
@@ -75,7 +75,7 @@ func (s *advertRepo) Insert(ctx context.Context, ad *domain.Advert) error {
 
 func (s *advertRepo) Update(ctx context.Context, URL string, newPrice float64) error {
 	sql, args, err := sq.Update("adverts").
-		Set("last_price", newPrice).
+		Set("current_price, last_price=adverts.current_price", newPrice).
 		Where("url = $1", URL).
 		PlaceholderFormat(sq.Dollar).
 		ToSql()

@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
-	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"parser/internal/http"
 	"parser/internal/notify"
 	"parser/internal/parser"
+	"parser/internal/postgres"
 	"parser/internal/telegram"
 	"parser/internal/timer"
-	"parser/pkg/postgres"
 	"syscall"
 	"time"
 )
@@ -41,10 +40,10 @@ func main() {
 
 	// TODO: get from config
 	connString := os.Getenv("DB_URL")
+	// move to config
 	if connString == "" {
 		log.Fatalf("DB_URL is not provied")
 	}
-
 	pg, err := postgres.FromConnectionString(ctx, connString)
 	if err != nil {
 		log.Fatalf("err: %s", err.Error())

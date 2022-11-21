@@ -1,9 +1,14 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
 
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+var (
+	ErrNoToken = errors.New("token must not be empty")
 )
 
 const (
@@ -30,6 +35,10 @@ func NewTelegram() Telegram {
 }
 
 func (t *telegram) Connect(token string) error {
+	if token == "" {
+		return ErrNoToken
+	}
+
 	bot, err := tg.NewBotAPI(token)
 	if err != nil {
 		return fmt.Errorf("unable to connect: %w", err)

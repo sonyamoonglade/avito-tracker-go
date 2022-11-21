@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 )
@@ -28,7 +29,12 @@ func (s *HTTPServer) Route(path, method string, h http.HandlerFunc) {
 }
 
 func (s *HTTPServer) Run() error {
-	return s.server.ListenAndServe()
+	err := s.server.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+
+	return err
 }
 
 func (s *HTTPServer) Shutdown(ctx context.Context) error {
