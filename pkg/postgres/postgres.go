@@ -10,9 +10,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-type Config struct {
-}
-
 type Postgres struct {
 	pool *pgxpool.Pool
 }
@@ -62,12 +59,6 @@ func (p *Postgres) ScanAll(rows pgx.Rows, dst interface{}) error {
 
 func (p *Postgres) ScanOne(rows pgx.Rows, dst interface{}) error {
 	return pgxscan.ScanOne(dst, rows)
-}
-
-func FromConfig(ctx context.Context, config *Config) (*Postgres, error) {
-
-	panic("implement")
-
 }
 
 func FromConnectionString(ctx context.Context, connString string) (*Postgres, error) {

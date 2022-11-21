@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  avito-parser:
+    build:
+      context: "../"
+      dockerfile: "./docker/dev.Dockerfile"
+    restart: on-failure
+    environment:
+       - DB_URL
+    volumes:
+      - ../:/app

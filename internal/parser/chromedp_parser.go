@@ -2,6 +2,7 @@ package parser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -19,7 +20,7 @@ type ChromeParser struct {
 	cancel   context.CancelFunc
 }
 
-func NewChromeParser(timeout time.Duration) (*ChromeParser, error) {
+func NewChromeParser() (*ChromeParser, error) {
 
 	titlerx, err := regexp.Compile(`"title-info-title-text.*?<`)
 	if err != nil {
@@ -40,8 +41,15 @@ func NewChromeParser(timeout time.Duration) (*ChromeParser, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	ctx, cancel = chromedp.NewContext(ctx)
+	ctx, cancel := chromedp.NewContext(context.Background())
+	err = chromedp.Run(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error booting a browser: %w", err)
+	}
+	go func() {
+		<-chromedp.FromContext(ctx).Browser.LostConnection
+		fmt.Println("LOST!")
+	}()
 	return &ChromeParser{
 		matchers: [4]*regexp.Regexp{titlerx, pricerx, imagerx1, imagerx2},
 		ctx:      ctx,
@@ -49,9 +57,13 @@ func NewChromeParser(timeout time.Duration) (*ChromeParser, error) {
 	}, nil
 }
 
-func (p *ChromeParser) Parse(url string) (*ParseResult, error) {
+func (p *ChromeParser) Parse(timeout time.Duration, url string) (*ParseResult, error) {
 	var html string
-	err := chromedp.Run(p.ctx,
+
+	// get rid of somehow
+	ctx, cancel := context.WithTimeout(p.ctx, timeout)
+	defer cancel()
+	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
 		chromedp.ActionFunc(func(c context.Context) error {
 			node, err := dom.GetDocument().Do(c)
@@ -63,11 +75,17 @@ func (p *ChromeParser) Parse(url string) (*ParseResult, error) {
 			if err != nil {
 				return fmt.Errorf("could not get outer html of body: %w", err)
 			}
-
 			html = res
 			return nil
 		}),
 	)
+	if errors.Is(err, context.Canceled) {
+		// Restart the browser and re-do the task
+		time.Sleep(time.Millisecond * 200)
+		fmt.Println("retrying...")
+		return p.retry(timeout, url)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("parsing error: %w", err)
 	}
@@ -82,6 +100,11 @@ func (p *ChromeParser) Parse(url string) (*ParseResult, error) {
 		Title: title,
 		Price: price,
 	}, nil
+}
+
+func (p *ChromeParser) retry(timeout time.Duration, url string) (*ParseResult, error) {
+	p.ctx, p.cancel = chromedp.NewContext(context.Background())
+	return p.Parse(timeout, url)
 }
 
 func (p *ChromeParser) parseTitle(buff *string) string {

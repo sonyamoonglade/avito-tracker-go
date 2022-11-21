@@ -7,6 +7,7 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20221114202156-f470c7c7306e
 	github.com/chromedp/chromedp v0.8.6
 	github.com/georgysavva/scany v1.2.1
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgconn v1.8.0
 	github.com/jackc/pgx/v4 v4.10.1

@@ -1,7 +1,10 @@
 package timer
 
-import "time"
+import (
+	"time"
+)
 
 type Timer interface {
-	On(interval time.Duration, f func())
+	Every(interval time.Duration, f func())
+	Stop()
 }
