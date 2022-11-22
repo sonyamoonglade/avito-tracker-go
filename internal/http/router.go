@@ -20,7 +20,6 @@ func NewMuxRouter() Router {
 }
 
 func (r *muxRouter) Route(path, method string, h http.HandlerFunc) {
-	// ignore path (default mux)
 	r.Routes[path] = validateMethod(h, method)
 }
 
