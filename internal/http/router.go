@@ -26,11 +26,7 @@ func (r *muxRouter) SetGlobalPrefix(prefix string) {
 }
 
 func (r *muxRouter) Route(path, method string, h http.HandlerFunc) {
-<<<<<<< HEAD
 	r.m.HandleFunc(r.prefix+path, validateMethod(h, method))
-=======
-	r.Routes[path] = validateMethod(h, method)
->>>>>>> b015edd8fca5456079496f321d715e627636dbd0
 }
 
 func (r *muxRouter) Handler() http.Handler {
