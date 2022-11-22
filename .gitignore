@@ -2,4 +2,5 @@ screenshot
 .env
 /bin
 /bin/main
+.idea
 
