@@ -2,16 +2,14 @@ package repositories
 
 import (
 	"context"
-	"fmt"
 	domain "parser/internal/domain/models"
-	"parser/pkg/postgres"
+	"parser/internal/postgres"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/google/uuid"
 )
 
 type SubscriberRepository interface {
-	InsertSubscriber(ctx context.Context, sub domain.Subscriber) error
+	InsertSubscriber(ctx context.Context, sub *domain.Subscriber) error
 	InsertSubscription(ctx context.Context, sub *domain.Subscription) error
 	GetAdvertSubscribers(ctx context.Context, advertID string) ([]*domain.Subscriber, error)
 }
@@ -20,7 +18,7 @@ type subscriberRepo struct {
 	db *postgres.Postgres
 }
 
-func NewRepo(db *postgres.Postgres) SubscriberRepository {
+func NewSubscriberRepo(db *postgres.Postgres) SubscriberRepository {
 	return &subscriberRepo{db: db}
 }
 
@@ -40,7 +38,7 @@ func (s *subscriberRepo) GetAdvertSubscribers(ctx context.Context, advertID stri
 
 	rows, release, err := s.db.Query(ctx, sql, args)
 	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
+		return nil, err
 	}
 
 	defer release()
@@ -48,7 +46,7 @@ func (s *subscriberRepo) GetAdvertSubscribers(ctx context.Context, advertID stri
 	var subscribers []*domain.Subscriber
 	err = s.db.ScanAll(rows, &subscribers)
 	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
+		return nil, err
 	}
 
 	return subscribers, nil
@@ -66,20 +64,18 @@ func (s *subscriberRepo) InsertSubscription(ctx context.Context, sub *domain.Sub
 	}
 	_, release, err := s.db.Query(ctx, sql, args)
 	if err != nil {
-		return fmt.Errorf("internal error: %w", err)
+		return err
 	}
 	defer release()
 
 	return nil
 }
 
-func (s *subscriberRepo) InsertSubscriber(ctx context.Context, sub domain.Subscriber) error {
-
-	sub.ID = uuid.NewString()
+func (s *subscriberRepo) InsertSubscriber(ctx context.Context, sub *domain.Subscriber) error {
 
 	sql, args, err := sq.Insert("subscribers").
-		Columns("id", "telegram_id").
-		Values(sub.ID, sub.TelegramID).
+		Columns("subscriber_id", "telegram_id").
+		Values(sub.SubscriberID, sub.TelegramID).
 		ToSql()
 
 	if err != nil {
@@ -87,7 +83,7 @@ func (s *subscriberRepo) InsertSubscriber(ctx context.Context, sub domain.Subscr
 	}
 	_, release, err := s.db.Query(ctx, sql, args)
 	if err != nil {
-		return fmt.Errorf("internal error: %w", err)
+		return err
 	}
 	defer release()
 

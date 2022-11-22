@@ -1,18 +1,18 @@
 CREATE TABLE IF NOT EXISTS "adverts"(
-    "advert_id" SERIAL PRIMARY KEY,
+    "advert_id" UUID PRIMARY KEY UNIQUE,
     "url" varchar(255) UNIQUE NOT NULL,
     "last_price" REAL NOT NULL,
     "current_price" REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "subscribers"(
-    "subscriber_id" SERIAL PRIMARY KEY,
+    "subscriber_id" UUID PRIMARY KEY UNIQUE,
     "telegram_id" INTEGER NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS "subscriptions"(
-    "advert_id" INTEGER NOT NULL,
-    "subscriber_id" INTEGER NOT NULL
+    "advert_id" UUID NOT NULL,
+    "subscriber_id" UUID NOT NULL
 );
 
 ALTER TABLE "subscriptions" ADD CONSTRAINT "advert_id_fk"

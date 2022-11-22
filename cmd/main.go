@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"parser/internal/domain/repositories"
+	"parser/internal/domain/services"
 	"parser/internal/http"
 	"parser/internal/notify"
 	"parser/internal/parser"
@@ -52,7 +54,27 @@ func main() {
 
 	telegram := telegram.NewTelegram()
 	telegramNotifier := notify.NewTelegramNotifier(telegram)
-	_ = telegramNotifier
+
+	repositories := repositories.NewRepositories(pg)
+	services := services.NewServices(repositories, telegramNotifier)
+
+	// TODO: introduce defaults for timeout and config..
+	server := http.NewHTTPServer(&http.ServerConfig{
+		Router:       http.NewMuxRouter(),
+		Addr:         "127.0.0.1:8000",
+		Services:     services,
+		WriteTimeout: time.Second * 10,
+		ReadTimeout:  time.Second * 10,
+	})
+
+	go func() {
+		err := server.Run()
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	}()
+
+	fmt.Println("http server is up")
 
 	// TODO: get from config
 	token := os.Getenv("BOT_TOKEN")
@@ -64,31 +86,23 @@ func main() {
 	}()
 	fmt.Println("telegram is connected")
 
-	// TODO: introduce defaults for timeout and config..
-	server := http.NewHTTPServer(http.NewMuxRouter(), "localhost:8000", time.Second*10, time.Second*10)
-	go func() {
-		err := server.Run()
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-	}()
-
-	fmt.Println("http server is up")
 	exit := make(chan os.Signal)
 	signal.Notify(exit, syscall.SIGINT, syscall.SIGKILL)
 
-	// gracefull shutdown
+	// Gracefull shutdown
 	<-exit
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	pg.Close()
-
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		// replace with Warn
 		log.Printf("server was unable to shutdown gracefully: %v", err)
 	}
+
+	ringParser.Stop()
+	pg.Close()
+	telegram.Close()
 
 	fmt.Println("shutdown gracefully")
 }

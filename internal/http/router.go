@@ -10,27 +10,27 @@ type Router interface {
 }
 
 type muxRouter struct {
-	Routes map[string]http.HandlerFunc
+	m      *http.ServeMux
+	prefix string
 }
 
 func NewMuxRouter() Router {
 	return &muxRouter{
-		Routes: make(map[string]http.HandlerFunc),
+		m:      http.NewServeMux(),
+		prefix: "",
 	}
+}
+
+func (r *muxRouter) SetGlobalPrefix(prefix string) {
+	r.prefix = prefix
 }
 
 func (r *muxRouter) Route(path, method string, h http.HandlerFunc) {
-	// ignore path (default mux)
-	r.Routes[path] = validateMethod(h, method)
+	r.m.HandleFunc(r.prefix+path, validateMethod(h, method))
 }
 
 func (r *muxRouter) Handler() http.Handler {
-	mux := http.NewServeMux()
-	for route, fn := range r.Routes {
-		mux.HandleFunc(route, fn)
-	}
-
-	return mux
+	return r.m
 }
 
 func validateMethod(h http.HandlerFunc, method string) http.HandlerFunc {

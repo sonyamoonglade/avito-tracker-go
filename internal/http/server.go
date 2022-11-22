@@ -4,28 +4,50 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"parser/internal/domain/services"
 	"time"
 )
+
+// Used to create HTTPServer instance
+type ServerConfig struct {
+	Router   Router
+	Addr     string
+	Services *services.Services
+
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
 
 type HTTPServer struct {
 	server *http.Server
 	router Router
+
+	services *services.Services
 }
 
-func NewHTTPServer(router Router, addr string, readTimeout time.Duration, writeTimeout time.Duration) *HTTPServer {
-	return &HTTPServer{
+func NewHTTPServer(cfg *ServerConfig) *HTTPServer {
+	srv := &HTTPServer{
 		server: &http.Server{
-			Addr:         addr,
-			ReadTimeout:  readTimeout,
-			WriteTimeout: writeTimeout,
-			Handler:      router.Handler(),
+			Addr:         ":8000",
+			ReadTimeout:  cfg.ReadTimeout,
+			WriteTimeout: cfg.WriteTimeout,
+			Handler:      cfg.Router.Handler(),
 		},
-		router: router,
+		router:   cfg.Router,
+		services: cfg.Services,
 	}
+
+	defer srv.routes()
+
+	return srv
 }
 
-func (s *HTTPServer) Route(path, method string, h http.HandlerFunc) {
-	s.router.Route(path, method, h)
+func (s *HTTPServer) routes() {
+
+	// TODO: add .post() .get() as shortcuts
+	rt := s.router.Route
+
+	rt("/subscribe", http.MethodPost, s.Subscribe)
 }
 
 func (s *HTTPServer) Run() error {
