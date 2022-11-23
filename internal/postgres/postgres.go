@@ -16,10 +16,6 @@ type Postgres struct {
 
 type ReleaseFunc func()
 
-func (p *Postgres) Close() {
-	p.pool.Close()
-}
-
 func (p *Postgres) Exec(ctx context.Context, sql string, args ...interface{}) (*pgconn.CommandTag, ReleaseFunc, error) {
 	conn, err := p.pool.Acquire(ctx)
 	if err != nil {
@@ -59,6 +55,10 @@ func (p *Postgres) ScanAll(rows pgx.Rows, dst interface{}) error {
 
 func (p *Postgres) ScanOne(rows pgx.Rows, dst interface{}) error {
 	return pgxscan.ScanOne(dst, rows)
+}
+
+func (p *Postgres) Close() {
+	p.pool.Close()
 }
 
 func FromConnectionString(ctx context.Context, connString string) (*Postgres, error) {

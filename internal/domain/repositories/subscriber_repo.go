@@ -9,6 +9,7 @@ import (
 )
 
 type SubscriberRepository interface {
+	// InsertSubscriber Inserts if subscriber does not exist otherwise ignores
 	InsertSubscriber(ctx context.Context, sub *domain.Subscriber) error
 	InsertSubscription(ctx context.Context, sub *domain.Subscription) error
 	GetAdvertSubscribers(ctx context.Context, advertID string) ([]*domain.Subscriber, error)

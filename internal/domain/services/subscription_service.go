@@ -37,15 +37,29 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 
 	var err error
 
-	emptyAdvert, err := domain.AdvertFromURL(dto.AdvertURL)
+	advert, err := s.advertRepo.GetByURL(ctx, dto.AdvertURL)
 	if err != nil {
-		return errors.WrapDomain(err)
+		return errors.WrapInternal(err, "subscriptionService.NewSubscription.GetByURL")
 	}
 
-	// TODO: parallel
-	err = s.advertRepo.Insert(ctx, emptyAdvert)
-	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.NewSubscription.Insert")
+	// No such advert in system yet
+	if advert == nil {
+
+		// Create new advert
+		emptyAdvert, err := domain.AdvertFromURL(dto.AdvertURL)
+		if err != nil {
+			return errors.WrapDomain(err)
+		}
+
+		// Save
+		// TODO: parallel
+		// TODO: finish the method
+		err = s.advertRepo.Insert(ctx, emptyAdvert)
+		if err != nil {
+			return errors.WrapInternal(err, "subscriptionService.NewSubscription.Insert")
+		}
+
+		advert = emptyAdvert
 	}
 
 	//TODO: parallel
@@ -56,7 +70,7 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 	}
 
 	//TODO: parallel
-	subscription := domain.NewSubscription(subscriber.SubscriberID, emptyAdvert.AdvertID)
+	subscription := domain.NewSubscription(subscriber.SubscriberID, advert.AdvertID)
 	err = s.subscriptionRepo.InsertSubscription(ctx, subscription)
 	if err != nil {
 		return errors.WrapInternal(err, "subscriptionService.NewSubscription.InsertSubscription")
