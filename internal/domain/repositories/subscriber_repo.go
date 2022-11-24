@@ -16,6 +16,8 @@ type SubscriberRepository interface {
 	InsertOnlySubscription(ctx context.Context, sub *domain.Subscriber) error
 
 	GetSubscription(ctx context.Context, subscriberTelegramID int64, advertURL string) (*domain.Subscription, error)
+	// Looks for adverts that users are subscribed to and returns
+	GetAllURLs(ctx context.Context) ([]string, error)
 
 	GetAdvertSubscribers(ctx context.Context, advertID string) ([]*domain.Subscriber, error)
 	GetSubscriber(ctx context.Context, telegramID int64) (*domain.Subscriber, error)
@@ -29,6 +31,16 @@ func NewSubscriberRepo(db *postgres.Postgres) SubscriberRepository {
 	return &subscriberRepo{db: db}
 }
 
+// TODO: complete
+func (s *subscriberRepo) GetAllURLs(ctx context.Context) ([]string, error) {
+
+	// sql, args := sq.Select("ad.url").
+	// 	From("adverts ad").
+	// 	Join("subscriptions sp on ad.advert_id = sp.advert_id").
+	return nil, nil
+
+}
+
 func (s *subscriberRepo) GetSubscription(ctx context.Context, subscriberTelegramID int64, advertURL string) (*domain.Subscription, error) {
 
 	sql, args, err := sq.Select("sp.advert_id, sp.subscriber_id").
@@ -38,7 +50,6 @@ func (s *subscriberRepo) GetSubscription(ctx context.Context, subscriberTelegram
 		Where("sub.telegram_id = $1 and ad.url = $2", subscriberTelegramID, advertURL).
 		ToSql()
 
-	fmt.Println(sql)
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +76,6 @@ func (s *subscriberRepo) GetSubscriber(ctx context.Context, telegramID int64) (*
 		Where("telegram_id = $1", telegramID).
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
-
-	fmt.Println(sql)
 
 	if err != nil {
 		return nil, err
@@ -97,8 +106,6 @@ func (s *subscriberRepo) GetAdvertSubscribers(ctx context.Context, advertID stri
 		Where("ads.advert_id = $1", advertID).
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
-
-	fmt.Println(sql)
 
 	if err != nil {
 		return nil, err
@@ -159,15 +166,12 @@ func (s *subscriberRepo) InsertSubscriber(ctx context.Context, sub *domain.Subsc
 
 	// Build sql for subscription insert
 	subscription := sub.Subscriptions()[0]
-	fmt.Println(subscription.AdvertID, subscription.SubscriberID)
 	sqlInsertSubscription, argsInsertSubscription, err := sq.Insert("subscriptions").
 		Columns("advert_id", "subscriber_id").
 		Values(subscription.AdvertID, subscription.SubscriberID).
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 
-	fmt.Println(sqlInsertSubscriber, argsInsertSubscriber)
-	fmt.Println(sqlInsertSubscription, argsInsertSubscription)
 	conn, err := s.db.ConnAcquire(ctx)
 	if err != nil {
 		return err

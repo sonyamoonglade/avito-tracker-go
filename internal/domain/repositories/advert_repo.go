@@ -11,7 +11,7 @@ import (
 
 type AdvertRepository interface {
 	Insert(ctx context.Context, ad *domain.Advert) error
-	Update(ctx context.Context, URL string, newPrice float64) error
+	Update(ctx context.Context, ad *domain.Advert) error
 	GetByURL(ctx context.Context, url string) (*domain.Advert, error)
 }
 
@@ -59,8 +59,6 @@ func (s *advertRepo) Insert(ctx context.Context, ad *domain.Advert) error {
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 
-	fmt.Println(sql, args)
-
 	if err != nil {
 		return err
 	}
@@ -75,16 +73,18 @@ func (s *advertRepo) Insert(ctx context.Context, ad *domain.Advert) error {
 	return nil
 }
 
-func (s *advertRepo) Update(ctx context.Context, URL string, newPrice float64) error {
-	sql, args, err := sq.Update("adverts").
-		Set("current_price, last_price=adverts.current_price", newPrice).
-		Where("url = $1", URL).
-		PlaceholderFormat(sq.Dollar).
-		ToSql()
-	if err != nil {
-		return err
-	}
+func (s *advertRepo) Update(ctx context.Context, ad *domain.Advert) error {
 
+	sql, args := sq.Update("adverts").
+		Set("current_price", ad.CurrentPrice()).
+		Set("last_price", ad.LastPrice()).
+		Set("title", ad.Title()).
+		Where(sq.Eq{
+			"advert_id": ad.AdvertID,
+		}).
+		MustSql()
+
+	fmt.Println(sql)
 	_, release, err := s.db.Exec(ctx, sql, args)
 	if err != nil {
 		return err

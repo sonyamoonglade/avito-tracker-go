@@ -22,24 +22,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	chromedpParser, err := parser.NewChromeParser()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	urls := []string{
-		"https://www.avito.ru/izhevsk/telefony/iphone_6_i_6s_2607330465",
-		"https://www.avito.ru/izhevsk/telefony/prodaetsya_afon_6s_na_zapchasti_2674592866",
-		"https://www.avito.ru/izhevsk/telefony/telefon_iphone_6_2690077250",
-	}
-
-	ringParser := parser.NewRingParser(chromedpParser, new(timer.AppTimer), urls...)
-
-	// TODO: get timeout from config
-	go ringParser.Run(time.Second * 10)
-
-	// data provider: ringParser.Out()
-
 	// TODO: get from config
 	connString := os.Getenv("DB_URL")
 	// move to config
@@ -55,8 +37,31 @@ func main() {
 	telegram := telegram.NewTelegram()
 	telegramNotifier := notify.NewTelegramNotifier(telegram)
 
+	chromedpParser, err := parser.NewChromeParser()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	waitingqLen := 10
+	ringParser := parser.NewRingParser(chromedpParser, new(timer.AppTimer), waitingqLen)
+
 	repositories := repositories.NewRepositories(pg)
 	services := services.NewServices(repositories, telegramNotifier, ringParser)
+
+	// Adds all URLs for parsing to ringParser
+	fetcher := services.SubscriptionService.GetAllURLs
+	if err := addInitialUrls(ctx, ringParser, fetcher); err != nil {
+		log.Fatal(err)
+	}
+
+	// TODO: get timeout from config
+	go ringParser.Run(time.Second * 10)
+
+	proxy := parser.NewProxy(ringParser.Out(), services.SubscriptionService.HandleParsingResult, func(err error) {
+		// Placeholder
+
+	})
+	go proxy.Run()
 
 	// TODO: introduce defaults for timeout and config..
 	server := http.NewHTTPServer(&http.ServerConfig{
@@ -68,10 +73,10 @@ func main() {
 	})
 
 	go func() {
-		err := server.Run()
-		if err != nil {
+		if err := server.Run(); err != nil {
 			log.Fatal(err.Error())
 		}
+
 	}()
 
 	fmt.Println("http server is up")
@@ -79,8 +84,7 @@ func main() {
 	// TODO: get from config
 	token := os.Getenv("BOT_TOKEN")
 	go func() {
-		err := telegram.Connect(token)
-		if err != nil {
+		if err := telegram.Connect(token); err != nil {
 			log.Fatalf("error connecting to telegram: %s", err.Error())
 		}
 	}()
@@ -100,9 +104,24 @@ func main() {
 		log.Printf("server was unable to shutdown gracefully: %v", err)
 	}
 
-	ringParser.Stop()
+	ringParser.Close()
 	pg.Close()
 	telegram.Close()
 
 	fmt.Println("shutdown gracefully")
+}
+
+// TODO: think of appropriate place...
+func addInitialUrls(ctx context.Context, ringParser *parser.RingParser, fetcher func(ctx context.Context) ([]string, error)) error {
+	urls, err := fetcher(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, url := range urls {
+		fmt.Printf("adding url: %s\n", url)
+		ringParser.AddTarget(url)
+	}
+
+	return nil
 }

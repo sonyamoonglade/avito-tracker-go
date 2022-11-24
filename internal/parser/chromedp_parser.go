@@ -57,7 +57,7 @@ func NewChromeParser() (*ChromeParser, error) {
 	}, nil
 }
 
-func (p *ChromeParser) Parse(timeout time.Duration, url string) (*ParseResult, error) {
+func (p *ChromeParser) Parse(timeout time.Duration, url string) *ParseResult {
 	var html string
 
 	// get rid of somehow
@@ -68,13 +68,14 @@ func (p *ChromeParser) Parse(timeout time.Duration, url string) (*ParseResult, e
 		chromedp.ActionFunc(func(c context.Context) error {
 			node, err := dom.GetDocument().Do(c)
 			if err != nil {
-				return fmt.Errorf("could not get document: %w", err)
+				return fmt.Errorf("parser: could not get document: %w", err)
 			}
 
 			res, err := dom.GetOuterHTML().WithNodeID(node.NodeID).Do(c)
 			if err != nil {
-				return fmt.Errorf("could not get outer html of body: %w", err)
+				return fmt.Errorf("parser: could not get outer html of body: %w", err)
 			}
+
 			html = res
 			return nil
 		}),
@@ -87,22 +88,21 @@ func (p *ChromeParser) Parse(timeout time.Duration, url string) (*ParseResult, e
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("parsing error: %w", err)
+		err = fmt.Errorf("parser: parsing error: %w", err)
+		return NewParseResultWithError(err)
 	}
 
 	title := p.parseTitle(&html)
 	price, err := p.parsePrice(&html)
 	if err != nil {
-		return nil, fmt.Errorf("price parsing error: %w", err)
+		err = fmt.Errorf("parser: price parsing error: %w", err)
+		return NewParseResultWithError(err)
 	}
 
-	return &ParseResult{
-		Title: title,
-		Price: price,
-	}, nil
+	return NewParseResult(title, price, url)
 }
 
-func (p *ChromeParser) retry(timeout time.Duration, url string) (*ParseResult, error) {
+func (p *ChromeParser) retry(timeout time.Duration, url string) *ParseResult {
 	p.ctx, p.cancel = chromedp.NewContext(context.Background())
 	return p.Parse(timeout, url)
 }

@@ -9,19 +9,23 @@ import (
 	"parser/internal/http/dto"
 	"parser/internal/notify"
 	"parser/internal/parser"
+	"time"
 )
 
 type SubscriptionService interface {
 	NewSubscription(ctx context.Context, dto *dto.SubscribeRequest) error
-	CompareWithLatestPrice(ctx context.Context, newPrice float64, url string) (bool, error)
-	NotifySubscribers(ctx context.Context, target *domain.Advert) error
+
+	NotifySubscribers(ctx context.Context, ad *domain.Advert) error
+	HandleParsingResult(result *parser.ParseResult) error
+
+	GetAllURLs(ctx context.Context) ([]string, error)
 }
 
 type subscriptionService struct {
 	subscriptionRepo repositories.SubscriberRepository
 	advertRepo       repositories.AdvertRepository
-	ringParser       *parser.RingParser
 	notifier         notify.Notifier
+	ringParser       *parser.RingParser
 }
 
 func NewSubscriptionService(
@@ -44,8 +48,6 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 	if err != nil {
 		return errors.WrapInternal(err, "subscriptionService.NewSubscription.GetSubscription")
 	}
-
-	fmt.Println(candidateSubscription)
 
 	// Subscription already exists
 	if candidateSubscription != nil {
@@ -116,8 +118,8 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 	return nil
 }
 
-func (s *subscriptionService) NotifySubscribers(ctx context.Context, target *domain.Advert) error {
-	subscribers, err := s.subscriptionRepo.GetAdvertSubscribers(ctx, target.URL)
+func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.Advert) error {
+	subscribers, err := s.subscriptionRepo.GetAdvertSubscribers(ctx, ad.URL)
 	if err != nil {
 		// TODO: wrap to internal
 		return errors.WrapInternal(err, "subscriptionService.NotifySubscribers.GetAdvertSubscribers")
@@ -126,13 +128,13 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, target *dom
 	for _, subscriber := range subscribers {
 
 		// hardcoded for now
-		msg := fmt.Sprintf("Hey!\n%s is updated!\nNew price: %.2f", target.Title, target.LastPrice)
+		msg := fmt.Sprintf("Hey!\n%s is updated!\nNew price: %.2f\nPrev price: %.2f\n", ad.Title(), ad.CurrentPrice(), ad.LastPrice())
 
 		// Notify actually
 		// Imagine we've straightforwardly chosen telegram notifications
 		// Otherwise we'd need to get user's wanted notification provider
 		// and match arguments to specific notifier... see Notifier args...
-		err := s.notifier.Notify(target, subscriber.TelegramID, msg)
+		err := s.notifier.Notify(ad, subscriber.TelegramID, msg)
 		if err != nil {
 			// TODO: maybe some queue??
 			return errors.WrapInternal(err, "subscriptionService.NotifySubscribers.Notify")
@@ -143,20 +145,46 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, target *dom
 	return nil
 }
 
-func (s *subscriptionService) CompareWithLatestPrice(ctx context.Context, newPrice float64, url string) (bool, error) {
-	advert, err := s.advertRepo.GetByURL(ctx, url)
+func (s *subscriptionService) HandleParsingResult(result *parser.ParseResult) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	advert, err := s.advertRepo.GetByURL(ctx, result.URL())
 	if err != nil {
-		return false, errors.WrapInternal(err, "subscriptionService.CompareWithLatestPrice.GetByURL")
+		return errors.WrapInternal(err, "subscriptionService.HandleParsingResult.GetByURL")
 	}
 
-	return advert.DidPriceChange(newPrice), nil
-}
+	hasTitle := advert.HasTitle()
+	if !hasTitle {
+		advert.UpdateTitle(result.Title())
+	}
 
-func (s *subscriptionService) UpdateAdvertPrice(ctx context.Context, URL string, newPrice float64) error {
-	err := s.advertRepo.Update(ctx, URL, newPrice)
+	didChange := advert.DidPriceChange(result.Price())
+	if didChange {
+		advert.UpdatePrice(result.Price())
+	}
+
+	// Update an advert
+	err = s.advertRepo.Update(ctx, advert)
 	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.UpdateAdvertPrice.Update")
+		return errors.WrapInternal(err, "subscriptionService.HandleParsingResult.Update")
+	}
+
+	// Notify
+	err = s.NotifySubscribers(context.Background(), advert)
+	if err != nil {
+		return errors.WrapInternal(err, "subscriptionService.HandleParsingResult.NotifySubscribers")
 	}
 
 	return nil
+}
+
+// Looks for adverts that users are subscribed to and returns urls
+func (s *subscriptionService) GetAllURLs(ctx context.Context) ([]string, error) {
+	urls, err := s.subscriptionRepo.GetAllURLs(ctx)
+	if err != nil {
+		return nil, errors.WrapInternal(err, "subscriptionService.GetAllURLs.GetAllURLs")
+	}
+
+	return urls, nil
 }

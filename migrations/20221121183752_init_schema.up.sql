@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS "adverts"(
     "advert_id" UUID PRIMARY KEY UNIQUE,
     "url" varchar(255) UNIQUE NOT NULL,
-    "title" varchar(255) UNIQUE NOT NULL DEFAULT '',
+    "title" varchar(255) NOT NULL DEFAULT '',
     "last_price" REAL NOT NULL DEFAULT 0.0,
     "current_price" REAL NOT NULL DEFAULT 0.0
 );

@@ -23,24 +23,15 @@ type RingParser struct {
 	out chan *ParseResult
 }
 
-func NewRingParser(parser Parser, timer timer.Timer, initialTargetURLs ...string) *RingParser {
-	if initialTargetURLs == nil {
-		initialTargetURLs = make([]string, 0, 0)
-	}
-
-	urls := make(map[string]struct{}, len(initialTargetURLs))
-	for _, url := range initialTargetURLs {
-		urls[url] = struct{}{}
-	}
-
+func NewRingParser(parser Parser, timer timer.Timer, queueLength int) *RingParser {
 	return &RingParser{
 		parser:  parser,
 		mu:      new(sync.Mutex),
 		offset:  0,
-		targets: initialTargetURLs,
-		urls:    urls,
+		targets: make([]string, 0),
+		urls:    make(map[string]struct{}),
 		timer:   timer,
-		out:     make(chan *ParseResult),
+		out:     make(chan *ParseResult, queueLength),
 	}
 }
 
@@ -48,9 +39,13 @@ func (rp *RingParser) Run(interval time.Duration) {
 	rp.timer.Every(interval, rp.parse)
 }
 
-func (rp *RingParser) Stop() {
+func (rp *RingParser) Close() {
 	close(rp.out)
 	rp.timer.Stop()
+}
+
+func (rp *RingParser) Out() <-chan *ParseResult {
+	return rp.out
 }
 
 func (rp *RingParser) AddTarget(url string) {
@@ -69,18 +64,19 @@ func (rp *RingParser) AddTarget(url string) {
 	rp.mu.Unlock()
 }
 
-func (rp *RingParser) Out() chan *ParseResult {
-	return rp.out
-}
-
 func (rp *RingParser) parse() {
+	rp.mu.Lock()
+	targetlen := len(rp.targets)
+	if targetlen == 0 {
+		rp.mu.Unlock()
+		return
+	}
 
 	fmt.Println("start parsing...")
 
-	rp.mu.Lock()
 	url := rp.targets[rp.offset]
 
-	mx := len(rp.targets) - 1
+	mx := targetlen - 1
 	if rp.offset == mx {
 		rp.offset = 0
 	} else {
@@ -88,22 +84,6 @@ func (rp *RingParser) parse() {
 	}
 	rp.mu.Unlock()
 
-	// move timeout from there
-	result, err := rp.parser.Parse(time.Second*10, url)
-	if err != nil {
-		rp.out <- &ParseResult{
-			Title: "",
-			Price: 0.0,
-			Err:   err,
-		}
-
-		return
-	}
-
-	fmt.Printf("%+v\n", result)
-	rp.out <- &ParseResult{
-		Title: result.Title,
-		Price: result.Price,
-		Err:   err,
-	}
+	// TODO: move timeout from there (timeout for one single parse)
+	rp.out <- rp.parser.Parse(time.Second*10, url)
 }
