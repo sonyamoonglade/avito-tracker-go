@@ -56,7 +56,7 @@ func main() {
 	telegramNotifier := notify.NewTelegramNotifier(telegram)
 
 	repositories := repositories.NewRepositories(pg)
-	services := services.NewServices(repositories, telegramNotifier)
+	services := services.NewServices(repositories, telegramNotifier, ringParser)
 
 	// TODO: introduce defaults for timeout and config..
 	server := http.NewHTTPServer(&http.ServerConfig{

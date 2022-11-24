@@ -10,12 +10,15 @@ import (
 type RingParser struct {
 	// List of URLs to parse
 	targets []string
-	offset  int
+	// Keep track of what urls are targets. See RingParser.AddTarget
+	urls   map[string]struct{}
+	offset int
 
-	mu     *sync.Mutex
+	// Protect data
+	mu *sync.Mutex
+
 	parser Parser
-
-	timer timer.Timer
+	timer  timer.Timer
 
 	out chan *ParseResult
 }
@@ -25,11 +28,17 @@ func NewRingParser(parser Parser, timer timer.Timer, initialTargetURLs ...string
 		initialTargetURLs = make([]string, 0, 0)
 	}
 
+	urls := make(map[string]struct{}, len(initialTargetURLs))
+	for _, url := range initialTargetURLs {
+		urls[url] = struct{}{}
+	}
+
 	return &RingParser{
 		parser:  parser,
 		mu:      new(sync.Mutex),
 		offset:  0,
 		targets: initialTargetURLs,
+		urls:    urls,
 		timer:   timer,
 		out:     make(chan *ParseResult),
 	}
@@ -45,6 +54,16 @@ func (rp *RingParser) Stop() {
 }
 
 func (rp *RingParser) AddTarget(url string) {
+	rp.mu.Lock()
+	_, ok := rp.urls[url]
+	rp.mu.Unlock()
+
+	// URL is already being parsed
+	if ok {
+		return
+	}
+
+	// Add url
 	rp.mu.Lock()
 	rp.targets = append(rp.targets, url)
 	rp.mu.Unlock()
@@ -81,7 +100,7 @@ func (rp *RingParser) parse() {
 		return
 	}
 
-	fmt.Println("ok")
+	fmt.Printf("%+v\n", result)
 	rp.out <- &ParseResult{
 		Title: result.Title,
 		Price: result.Price,

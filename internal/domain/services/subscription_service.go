@@ -8,6 +8,7 @@ import (
 	"parser/internal/errors"
 	"parser/internal/http/dto"
 	"parser/internal/notify"
+	"parser/internal/parser"
 )
 
 type SubscriptionService interface {
@@ -19,49 +20,99 @@ type SubscriptionService interface {
 type subscriptionService struct {
 	subscriptionRepo repositories.SubscriberRepository
 	advertRepo       repositories.AdvertRepository
+	ringParser       *parser.RingParser
 	notifier         notify.Notifier
 }
 
 func NewSubscriptionService(
 	subscriptionRepo repositories.SubscriberRepository,
 	advertRepo repositories.AdvertRepository,
-	notifier notify.Notifier) SubscriptionService {
+	notifier notify.Notifier,
+	ringParser *parser.RingParser) SubscriptionService {
 	return &subscriptionService{
 		subscriptionRepo: subscriptionRepo,
 		advertRepo:       advertRepo,
 		notifier:         notifier,
+		ringParser:       ringParser,
 	}
 }
 
 func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.SubscribeRequest) error {
 
-	var err error
-
-	emptyAdvert, err := domain.AdvertFromURL(dto.AdvertURL)
+	// Before heavy buisiness logic perform quick check
+	candidateSubscription, err := s.subscriptionRepo.GetSubscription(ctx, dto.TelegramID, dto.AdvertURL)
 	if err != nil {
-		return errors.WrapDomain(err)
+		return errors.WrapInternal(err, "subscriptionService.NewSubscription.GetSubscription")
 	}
 
-	// TODO: parallel
-	err = s.advertRepo.Insert(ctx, emptyAdvert)
-	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.NewSubscription.Insert")
+	fmt.Println(candidateSubscription)
+
+	// Subscription already exists
+	if candidateSubscription != nil {
+		return domain.ErrSubscriptionExist
 	}
 
-	//TODO: parallel
-	subscriber := domain.SubscriberFromTelegramID(dto.TelegramID)
-	err = s.subscriptionRepo.InsertSubscriber(ctx, subscriber)
+	// Try get existing advert
+	advert, err := s.advertRepo.GetByURL(ctx, dto.AdvertURL)
 	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.NewSubscription.InsertSubscriber")
+		return errors.WrapInternal(err, "subscriptionService.NewSubscription.GetByURL")
 	}
 
-	//TODO: parallel
-	subscription := domain.NewSubscription(subscriber.SubscriberID, emptyAdvert.AdvertID)
-	err = s.subscriptionRepo.InsertSubscription(ctx, subscription)
-	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.NewSubscription.InsertSubscription")
+	// No such advert so create one
+	if advert == nil {
+		fmt.Println("creating new advert")
+
+		newAdvert, err := domain.AdvertFromURL(dto.AdvertURL)
+		if err != nil {
+			return errors.WrapDomain(err)
+		}
+
+		// TODO: parallel
+		err = s.advertRepo.Insert(ctx, newAdvert)
+		if err != nil {
+			return errors.WrapInternal(err, "subscriptionService.NewSubscription.Insert")
+		}
+
+		advert = newAdvert
 	}
 
+	// Indicates if subscriber has already existed.
+	var isNewSubscriber bool
+
+	subscriber, err := s.subscriptionRepo.GetSubscriber(ctx, dto.TelegramID)
+	if err != nil {
+		return errors.WrapInternal(err, "subscriptionService.NewSubscription.GetSubscriber")
+	}
+
+	// No such subscriber so create one
+	if subscriber == nil {
+		fmt.Println("creating new subscriber")
+		subscriber = domain.SubscriberFromTelegramID(dto.TelegramID)
+		isNewSubscriber = true
+	}
+
+	subscription := domain.NewSubscription(subscriber.SubscriberID, advert.AdvertID)
+	subscriber.AddSubscription(subscription)
+
+	if isNewSubscriber {
+		//TODO: parallel
+		// Insert subscription (saves subscriptions automatically)
+		err = s.subscriptionRepo.InsertSubscriber(ctx, subscriber)
+		if err != nil {
+			return errors.WrapInternal(err, "subscriptionService.NewSubscription.InsertSubscriber")
+		}
+
+	} else {
+		//TODO: parallel
+		// Just save subscription
+		err = s.subscriptionRepo.InsertOnlySubscription(ctx, subscriber)
+		if err != nil {
+			return errors.WrapInternal(err, "subscriptionService.NewSubscription.InsertOnlySubscription")
+		}
+
+	}
+
+	s.ringParser.AddTarget(advert.URL)
 	return nil
 }
 

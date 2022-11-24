@@ -5,7 +5,6 @@ services:
     build:
       context: "../"
       dockerfile: "./docker/dev.Dockerfile"
-    restart: on-failure
     environment:
        - DB_URL
        - BOT_TOKEN

@@ -24,6 +24,7 @@ func (s *HTTPServer) Subscribe(w http.ResponseWriter, r *http.Request) {
 	err = s.services.SubscriptionService.NewSubscription(r.Context(), &inp)
 	if err != nil {
 		// TODO: later add app error handling
+		fmt.Printf("error: %s\n", err.Error())
 		w.Write([]byte(err.Error()))
 		return
 	}

@@ -50,7 +50,7 @@ func (t *telegram) Connect(token string) error {
 	})
 
 	for update := range updates {
-		_ = update
+		fmt.Printf("ID: %d\n", update.SentFrom().ID)
 	}
 
 	return nil

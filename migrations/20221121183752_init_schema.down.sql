@@ -1,3 +1,3 @@
-DROP TABLE IF EXISTS "adverts";
-DROP TABLE IF EXISTS "subscriptions";
-DROP TABLE IF EXISTS "subscribers";
+DROP TABLE IF EXISTS "adverts" CASCADE;
+DROP TABLE IF EXISTS "subscriptions" CASCADE;
+DROP TABLE IF EXISTS "subscribers" CASCADE;

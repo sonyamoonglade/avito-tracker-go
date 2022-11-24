@@ -36,7 +36,7 @@ func (s *advertRepo) GetByURL(ctx context.Context, url string) (*domain.Advert, 
 
 	rows, release, err := s.db.Query(ctx, sql, args)
 	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
+		return nil, err
 	}
 
 	defer release()
@@ -45,7 +45,7 @@ func (s *advertRepo) GetByURL(ctx context.Context, url string) (*domain.Advert, 
 
 	err = s.db.ScanOne(rows, &ad)
 	if err != nil {
-		return nil, fmt.Errorf("internal error: %w", err)
+		return nil, postgres.CheckEmptyRows(err)
 	}
 
 	return &ad, nil
@@ -67,7 +67,7 @@ func (s *advertRepo) Insert(ctx context.Context, ad *domain.Advert) error {
 
 	_, release, err := s.db.Exec(ctx, sql, args)
 	if err != nil {
-		return fmt.Errorf("internal error: %w", err)
+		return err
 	}
 
 	defer release()
@@ -85,11 +85,9 @@ func (s *advertRepo) Update(ctx context.Context, URL string, newPrice float64) e
 		return err
 	}
 
-	fmt.Println(sql)
-
 	_, release, err := s.db.Exec(ctx, sql, args)
 	if err != nil {
-		return fmt.Errorf("internal error: %w", err)
+		return err
 	}
 
 	defer release()
