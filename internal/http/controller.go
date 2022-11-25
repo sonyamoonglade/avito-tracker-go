@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"parser/internal/http/dto"
 )
@@ -19,12 +18,9 @@ func (s *HTTPServer) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("%+v\n", inp)
-
 	err = s.services.SubscriptionService.NewSubscription(r.Context(), &inp)
 	if err != nil {
 		// TODO: later add app error handling
-		fmt.Printf("error: %s\n", err.Error())
 		w.Write([]byte(err.Error()))
 		return
 	}

@@ -43,11 +43,14 @@ func (t *telegram) Connect(token string) error {
 	if err != nil {
 		return fmt.Errorf("unable to connect: %w", err)
 	}
+	bot.Debug = true
 
 	// todo: custom timeout
 	updates := bot.GetUpdatesChan(tg.UpdateConfig{
 		Timeout: pollTimeout,
 	})
+
+	t.client = bot
 
 	for update := range updates {
 		fmt.Printf("ID: %d\n", update.SentFrom().ID)

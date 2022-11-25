@@ -2,7 +2,6 @@ package parser
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -80,19 +79,13 @@ func (p *ChromeParser) Parse(timeout time.Duration, url string) *ParseResult {
 			return nil
 		}),
 	)
-	if errors.Is(err, context.Canceled) {
-		// Restart the browser and re-do the task
-		time.Sleep(time.Millisecond * 200)
-		fmt.Println("retrying...")
-		return p.retry(timeout, url)
-	}
 
+	title, err := p.parseTitle(&html)
 	if err != nil {
-		err = fmt.Errorf("parser: parsing error: %w", err)
+		err = fmt.Errorf("parser: title parsing error: %w", err)
 		return NewParseResultWithError(err)
 	}
 
-	title := p.parseTitle(&html)
 	price, err := p.parsePrice(&html)
 	if err != nil {
 		err = fmt.Errorf("parser: price parsing error: %w", err)
@@ -102,16 +95,17 @@ func (p *ChromeParser) Parse(timeout time.Duration, url string) *ParseResult {
 	return NewParseResult(title, price, url)
 }
 
-func (p *ChromeParser) retry(timeout time.Duration, url string) *ParseResult {
-	p.ctx, p.cancel = chromedp.NewContext(context.Background())
-	return p.Parse(timeout, url)
-}
+func (p *ChromeParser) parseTitle(buff *string) (string, error) {
 
-func (p *ChromeParser) parseTitle(buff *string) string {
 	rx := p.matchers[0]
+	results := rx.FindAllString(*buff, 1)
 
-	match := rx.FindAllString(*buff, 1)[0]
-	spl := strings.Split(match, "")
+	// URL is unavailable or ip is banned
+	if len(results) == 0 {
+		return "", ErrURLUnavailable
+	}
+
+	spl := strings.Split(results[0], "")
 
 	var title string
 	for i := len(spl) - 2; i >= 0; i-- {
@@ -122,14 +116,19 @@ func (p *ChromeParser) parseTitle(buff *string) string {
 		title = spl[i] + title
 	}
 
-	return title
+	return title, nil
 }
 
 func (p *ChromeParser) parsePrice(buff *string) (float64, error) {
-	rx := p.matchers[1]
 
-	match := rx.FindAllString(*buff, 1)[0]
-	spl := strings.Split(match, "")
+	rx := p.matchers[1]
+	results := rx.FindAllString(*buff, 1)
+
+	if len(results) == 0 {
+		return 0.0, ErrURLUnavailable
+	}
+
+	spl := strings.Split(results[0], "")
 
 	var pricestr string
 	for i := len(spl) - 2; i >= 0; i-- {

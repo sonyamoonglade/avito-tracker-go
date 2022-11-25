@@ -18,19 +18,22 @@ type RingParser struct {
 	mu *sync.Mutex
 
 	parser Parser
-	timer  timer.Timer
+	// Control maximum time a single parsing process can take
+	timeout time.Duration
+	timer   timer.Timer
 
 	out chan *ParseResult
 }
 
-func NewRingParser(parser Parser, timer timer.Timer, queueLength int) *RingParser {
+func NewRingParser(parser Parser, timer timer.Timer, parsingTimeout time.Duration, queueLength int) *RingParser {
 	return &RingParser{
 		parser:  parser,
-		mu:      new(sync.Mutex),
+		mu:      &sync.Mutex{},
 		offset:  0,
 		targets: make([]string, 0),
 		urls:    make(map[string]struct{}),
 		timer:   timer,
+		timeout: parsingTimeout,
 		out:     make(chan *ParseResult, queueLength),
 	}
 }
@@ -61,7 +64,10 @@ func (rp *RingParser) AddTarget(url string) {
 	// Add url
 	rp.mu.Lock()
 	rp.targets = append(rp.targets, url)
+	rp.urls[url] = struct{}{}
 	rp.mu.Unlock()
+
+	fmt.Println("added: ", url)
 }
 
 func (rp *RingParser) parse() {
@@ -72,8 +78,7 @@ func (rp *RingParser) parse() {
 		return
 	}
 
-	fmt.Println("start parsing...")
-
+	// Mutex is locked here
 	url := rp.targets[rp.offset]
 
 	mx := targetlen - 1
@@ -84,6 +89,5 @@ func (rp *RingParser) parse() {
 	}
 	rp.mu.Unlock()
 
-	// TODO: move timeout from there (timeout for one single parse)
-	rp.out <- rp.parser.Parse(time.Second*10, url)
+	rp.out <- rp.parser.Parse(rp.timeout, url)
 }

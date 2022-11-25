@@ -11,11 +11,21 @@ var (
 )
 
 type Advert struct {
-	AdvertID     string  `db:"advert_id"`
-	URL          string  `db:"url"`
-	title        string  `db:"title"`
-	currentPrice float64 `db:"current_price"`
-	lastPrice    float64 `db:"last_price"`
+	AdvertID     string
+	url          string
+	title        string
+	currentPrice float64
+	lastPrice    float64
+}
+
+func NewAdvert(id, url, title string, currentPrice, lastPrice float64) *Advert {
+	return &Advert{
+		AdvertID:     id,
+		url:          url,
+		title:        title,
+		currentPrice: currentPrice,
+		lastPrice:    lastPrice,
+	}
 }
 
 func AdvertFromURL(URL string) (*Advert, error) {
@@ -25,11 +35,15 @@ func AdvertFromURL(URL string) (*Advert, error) {
 
 	return &Advert{
 		AdvertID:     uuid.NewString(),
-		URL:          URL,
+		url:          URL,
 		title:        "",
 		currentPrice: 0.0,
 		lastPrice:    0.0,
 	}, nil
+}
+
+func (ad *Advert) URL() string {
+	return ad.url
 }
 
 func (ad *Advert) CurrentPrice() float64 {
@@ -45,11 +59,11 @@ func (ad *Advert) Title() string {
 }
 
 func (ad *Advert) DidPriceChange(newPrice float64) bool {
-	return ad.currentPrice == newPrice
+	return ad.currentPrice != newPrice
 }
 
 func (ad *Advert) HasTitle() bool {
-	return ad.title == ""
+	return ad.title != ""
 }
 
 func (ad *Advert) UpdateTitle(title string) {
@@ -57,6 +71,15 @@ func (ad *Advert) UpdateTitle(title string) {
 }
 
 func (ad *Advert) UpdatePrice(price float64) {
+	// Occurs if lastPrice is zero and currentPrice is updated
+	if ad.lastPrice == ad.currentPrice && ad.lastPrice == 0 {
+		ad.lastPrice = price
+		ad.currentPrice = price
+
+		return
+	}
+
+	// General case
 	ad.lastPrice = ad.currentPrice
 	ad.currentPrice = price
 }

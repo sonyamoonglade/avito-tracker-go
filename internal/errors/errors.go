@@ -33,7 +33,7 @@ func (ae *ApplicationError) PrintStacktrace() string {
 }
 
 func (ae *ApplicationError) addTrace(trace string) {
-	ae.stacktrace = append(ae.stacktrace, trace)
+	ae.stacktrace = append([]string{trace, "."}, ae.stacktrace...)
 }
 
 func WrapInternal(err error, context string) error {
@@ -52,7 +52,7 @@ func WrapDomain(err error) error {
 	}
 }
 
-func Chain(err error, context string) error {
+func ChainInternal(err error, context string) error {
 	ae, ok := err.(*ApplicationError)
 	if !ok {
 		return err

@@ -16,9 +16,10 @@ type SubscriptionService interface {
 	NewSubscription(ctx context.Context, dto *dto.SubscribeRequest) error
 
 	NotifySubscribers(ctx context.Context, ad *domain.Advert) error
-	HandleParsingResult(result *parser.ParseResult) error
 
-	GetAllURLs(ctx context.Context) ([]string, error)
+	GetUpdateHandler() parser.UpdateHandler
+
+	GetURLFetcher() func(ctx context.Context) ([]string, error)
 }
 
 type subscriptionService struct {
@@ -62,7 +63,6 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 
 	// No such advert so create one
 	if advert == nil {
-		fmt.Println("creating new advert")
 
 		newAdvert, err := domain.AdvertFromURL(dto.AdvertURL)
 		if err != nil {
@@ -88,7 +88,6 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 
 	// No such subscriber so create one
 	if subscriber == nil {
-		fmt.Println("creating new subscriber")
 		subscriber = domain.SubscriberFromTelegramID(dto.TelegramID)
 		isNewSubscriber = true
 	}
@@ -114,12 +113,12 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 
 	}
 
-	s.ringParser.AddTarget(advert.URL)
+	s.ringParser.AddTarget(advert.URL())
 	return nil
 }
 
 func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.Advert) error {
-	subscribers, err := s.subscriptionRepo.GetAdvertSubscribers(ctx, ad.URL)
+	subscribers, err := s.subscriptionRepo.GetAdvertSubscribers(ctx, ad.AdvertID)
 	if err != nil {
 		// TODO: wrap to internal
 		return errors.WrapInternal(err, "subscriptionService.NotifySubscribers.GetAdvertSubscribers")
@@ -134,7 +133,7 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.
 		// Imagine we've straightforwardly chosen telegram notifications
 		// Otherwise we'd need to get user's wanted notification provider
 		// and match arguments to specific notifier... see Notifier args...
-		err := s.notifier.Notify(ad, subscriber.TelegramID, msg)
+		err := s.notifier.Notify(ad, subscriber.TelegramID(), msg)
 		if err != nil {
 			// TODO: maybe some queue??
 			return errors.WrapInternal(err, "subscriptionService.NotifySubscribers.Notify")
@@ -145,45 +144,66 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.
 	return nil
 }
 
-func (s *subscriptionService) HandleParsingResult(result *parser.ParseResult) error {
+func (s *subscriptionService) GetUpdateHandler() parser.UpdateHandler {
+	return s.handleUpdate
+}
+
+// Returns helper func to fetch all URLs that subscribers are subscribed to
+func (s *subscriptionService) GetURLFetcher() func(ctx context.Context) ([]string, error) {
+	return s.getAllURLs
+}
+
+func (s *subscriptionService) handleUpdate(update *parser.ParseResult) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	advert, err := s.advertRepo.GetByURL(ctx, result.URL())
+	advert, err := s.advertRepo.GetByURL(ctx, update.URL())
 	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.HandleParsingResult.GetByURL")
+		return errors.WrapInternal(err, "subscriptionService.handleUpdate.GetByURL")
 	}
+
+	// Indicates if title of advert has updated (from empty title to normal)
+	var titleChanged bool
 
 	hasTitle := advert.HasTitle()
 	if !hasTitle {
-		advert.UpdateTitle(result.Title())
+		advert.UpdateTitle(update.Title())
+		titleChanged = true
 	}
 
-	didChange := advert.DidPriceChange(result.Price())
-	if didChange {
-		advert.UpdatePrice(result.Price())
+	priceChanged := advert.DidPriceChange(update.Price())
+	if priceChanged {
+		advert.UpdatePrice(update.Price())
+	}
+
+	fmt.Printf("update status: price-%t; title-%t\n", priceChanged, titleChanged)
+
+	// If nothing has changed - ignore
+	if !priceChanged && !titleChanged {
+		return nil
 	}
 
 	// Update an advert
 	err = s.advertRepo.Update(ctx, advert)
 	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.HandleParsingResult.Update")
+		return errors.WrapInternal(err, "subscriptionService.handleUpdate.Update")
 	}
 
 	// Notify
 	err = s.NotifySubscribers(context.Background(), advert)
 	if err != nil {
-		return errors.WrapInternal(err, "subscriptionService.HandleParsingResult.NotifySubscribers")
+		// Calling service method that could returns an ApplicationError so chain it
+		// to receive full stacktrace
+		return errors.ChainInternal(err, "handleUpdate.NotifySubscribers")
 	}
 
 	return nil
 }
 
-// Looks for adverts that users are subscribed to and returns urls
-func (s *subscriptionService) GetAllURLs(ctx context.Context) ([]string, error) {
+func (s *subscriptionService) getAllURLs(ctx context.Context) ([]string, error) {
 	urls, err := s.subscriptionRepo.GetAllURLs(ctx)
 	if err != nil {
-		return nil, errors.WrapInternal(err, "subscriptionService.GetAllURLs.GetAllURLs")
+		return nil, errors.WrapInternal(err, "subscriptionService.getAllURLs.GetAllURLs")
 	}
 
 	return urls, nil

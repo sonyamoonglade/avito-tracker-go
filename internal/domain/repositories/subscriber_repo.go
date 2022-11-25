@@ -34,10 +34,24 @@ func NewSubscriberRepo(db *postgres.Postgres) SubscriberRepository {
 // TODO: complete
 func (s *subscriberRepo) GetAllURLs(ctx context.Context) ([]string, error) {
 
-	// sql, args := sq.Select("ad.url").
-	// 	From("adverts ad").
-	// 	Join("subscriptions sp on ad.advert_id = sp.advert_id").
-	return nil, nil
+	sql, args := sq.Select("ad.url").
+		From("adverts ad").
+		Join("subscriptions sp on ad.advert_id = sp.advert_id").
+		MustSql()
+
+	rows, release, err := s.db.Query(ctx, sql, args)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	var urls []string
+	err = s.db.ScanAll(rows, &urls)
+	if err != nil {
+		return nil, postgres.CheckEmptyRows(err)
+	}
+
+	return urls, nil
 
 }
 
@@ -60,6 +74,7 @@ func (s *subscriberRepo) GetSubscription(ctx context.Context, subscriberTelegram
 	}
 	defer release()
 
+	// TODO: replace with SubscriptionDB
 	var subscription domain.Subscription
 	err = s.db.ScanOne(rows, &subscription)
 	if err != nil {
@@ -87,14 +102,14 @@ func (s *subscriberRepo) GetSubscriber(ctx context.Context, telegramID int64) (*
 	}
 	defer release()
 
-	var subscriber domain.Subscriber
+	var subscriber postgres.SubscriberDB
 
 	err = s.db.ScanOne(rows, &subscriber)
 	if err != nil {
 		return nil, postgres.CheckEmptyRows(err)
 	}
 
-	return &subscriber, nil
+	return subscriber.ToDomain(), nil
 }
 
 func (s *subscriberRepo) GetAdvertSubscribers(ctx context.Context, advertID string) ([]*domain.Subscriber, error) {
@@ -118,10 +133,21 @@ func (s *subscriberRepo) GetAdvertSubscribers(ctx context.Context, advertID stri
 
 	defer release()
 
-	var subscribers []*domain.Subscriber
-	err = s.db.ScanAll(rows, &subscribers)
-	if err != nil {
-		return nil, postgres.CheckEmptyRows(err)
+	var dbsubscribers []*postgres.SubscriberDB
+	for rows.Next() {
+		var dbsub postgres.SubscriberDB
+		// rows: subscriber_id, telegram_id
+		err = rows.Scan(&dbsub.SubscriberID, &dbsub.TelegramID)
+		if err != nil {
+			return nil, postgres.CheckEmptyRows(err)
+		}
+
+		dbsubscribers = append(dbsubscribers, &dbsub)
+	}
+
+	subscribers := make([]*domain.Subscriber, 0)
+	for _, dbsub := range dbsubscribers {
+		subscribers = append(subscribers, dbsub.ToDomain())
 	}
 
 	return subscribers, nil
@@ -156,7 +182,7 @@ func (s *subscriberRepo) InsertSubscriber(ctx context.Context, sub *domain.Subsc
 	// Build sql for subscription insert
 	sqlInsertSubscriber, argsInsertSubscriber, err := sq.Insert("subscribers").
 		Columns("subscriber_id", "telegram_id").
-		Values(sub.SubscriberID, sub.TelegramID).
+		Values(sub.SubscriberID, sub.TelegramID()).
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 

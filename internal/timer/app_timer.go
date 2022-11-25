@@ -15,8 +15,8 @@ func (at *AppTimer) Every(interval time.Duration, f func()) {
 	}
 
 	for {
-		f()
 		<-at.t.C
+		f()
 	}
 }
 
