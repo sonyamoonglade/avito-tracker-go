@@ -5,7 +5,14 @@ import (
 )
 
 type AppTimer struct {
-	t *time.Ticker
+	shutdown chan struct{}
+	t        *time.Ticker
+}
+
+func NewAppTimer() Timer {
+	return &AppTimer{
+		shutdown: make(chan struct{}),
+	}
 }
 
 func (at *AppTimer) Every(interval time.Duration, f func()) {
@@ -15,11 +22,17 @@ func (at *AppTimer) Every(interval time.Duration, f func()) {
 	}
 
 	for {
-		<-at.t.C
-		f()
+		select {
+		case <-at.shutdown:
+			at.t.Stop()
+			return
+		case <-at.t.C:
+			f()
+		}
 	}
 }
 
 func (at *AppTimer) Stop() {
+	close(at.shutdown)
 	at.t.Stop()
 }

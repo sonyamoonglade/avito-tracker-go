@@ -16,35 +16,42 @@ type RingParser struct {
 
 	// Protect data
 	mu *sync.Mutex
+	wg *sync.WaitGroup
 
 	parser Parser
 	// Control maximum time a single parsing process can take
 	timeout time.Duration
 	timer   timer.Timer
 
-	out chan *ParseResult
+	out      chan *ParseResult
+	shutdown chan struct{}
 }
 
 func NewRingParser(parser Parser, timer timer.Timer, parsingTimeout time.Duration, queueLength int) *RingParser {
 	return &RingParser{
-		parser:  parser,
-		mu:      &sync.Mutex{},
-		offset:  0,
-		targets: make([]string, 0),
-		urls:    make(map[string]struct{}),
-		timer:   timer,
-		timeout: parsingTimeout,
-		out:     make(chan *ParseResult, queueLength),
+		parser:   parser,
+		mu:       &sync.Mutex{},
+		wg:       new(sync.WaitGroup),
+		shutdown: make(chan struct{}),
+		offset:   0,
+		timer:    timer,
+		targets:  make([]string, 0),
+		urls:     make(map[string]struct{}),
+		timeout:  parsingTimeout,
+		out:      make(chan *ParseResult, queueLength),
 	}
 }
 
+// Run spawns a gorotine that performs a parsing within an interval
 func (rp *RingParser) Run(interval time.Duration) {
-	rp.timer.Every(interval, rp.parse)
+	go rp.timer.Every(interval, rp.parse)
 }
 
 func (rp *RingParser) Close() {
-	close(rp.out)
 	rp.timer.Stop()
+	// signal all parsing goroutines to end
+	rp.wg.Wait()
+	close(rp.out)
 }
 
 func (rp *RingParser) Out() <-chan *ParseResult {
@@ -71,6 +78,7 @@ func (rp *RingParser) AddTarget(url string) {
 }
 
 func (rp *RingParser) parse() {
+
 	rp.mu.Lock()
 	targetlen := len(rp.targets)
 	if targetlen == 0 {
@@ -89,5 +97,10 @@ func (rp *RingParser) parse() {
 	}
 	rp.mu.Unlock()
 
-	rp.out <- rp.parser.Parse(rp.timeout, url)
+	rp.wg.Add(1)
+	go func() {
+		data := rp.parser.Parse(rp.timeout, url)
+		rp.out <- data
+		rp.wg.Done()
+	}()
 }
