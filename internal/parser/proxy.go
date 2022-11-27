@@ -12,12 +12,13 @@ type UpdateHandler func(result *ParseResult) error
 // On error the callback `onError` is executed
 type Proxy struct {
 	rcvq          <-chan *ParseResult
+	shutdown      chan struct{}
 	updateHandler UpdateHandler
 	onError       func(err error)
 }
 
 func NewProxy(rcvq <-chan *ParseResult, updateHandler UpdateHandler, onError func(err error)) *Proxy {
-	return &Proxy{rcvq: rcvq, updateHandler: updateHandler, onError: onError}
+	return &Proxy{rcvq: rcvq, updateHandler: updateHandler, onError: onError, shutdown: make(chan struct{})}
 }
 
 // Run starts listening to rcvq and execute updateHandler
@@ -34,7 +35,8 @@ func (p *Proxy) Run() {
 		err := p.updateHandler(update)
 		var appErr *errors.ApplicationError
 		if goerrors.As(err, &appErr) {
-			fmt.Println("trace: ", appErr.PrintStacktrace())
+			fmt.Println("trace: ", appErr.PrintStacktrace(), "error: ", appErr.Error())
+			continue
 		}
 
 		if err != nil {

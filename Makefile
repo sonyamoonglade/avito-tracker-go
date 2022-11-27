@@ -11,7 +11,11 @@ build:
 local: build
 	./bin/main
 	
+test:
+	go test -v -race ./...
+
 migrate-local-up:
 	docker-compose -f docker/docker-compose.migrations.yml --env-file .env up
+
 migrate-local-down:
 	docker-compose -f docker/docker-compose.migrations.down.yml --env-file .env up

@@ -59,7 +59,7 @@ func Bootstrap() error {
 
 	// TODO: get timeout from config
 	parsingInterval := time.Second * 20
-	go ringParser.Run(parsingInterval)
+	ringParser.Run(parsingInterval)
 
 	updateHandler := services.SubscriptionService.GetUpdateHandler()
 	proxy := parser.NewProxy(ringParser.Out(), updateHandler, func(err error) {

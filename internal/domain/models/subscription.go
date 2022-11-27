@@ -6,6 +6,7 @@ var (
 	ErrSubscriptionExist = errors.New("subscription already exists")
 )
 
+// TODO: db model
 type Subscription struct {
 	SubscriberID string `db:"subscriber_id"`
 	AdvertID     string `db:"advert_id"`
