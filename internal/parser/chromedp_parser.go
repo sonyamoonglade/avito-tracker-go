@@ -21,34 +21,23 @@ type ChromeParser struct {
 
 func NewChromeParser() (*ChromeParser, error) {
 
-	titlerx, err := regexp.Compile(`"title-info-title-text.*?<`)
-	if err != nil {
-		return nil, err
-	}
+	titlerx := regexp.MustCompile(`"title-info-title-text.*?<`)
+	pricerx := regexp.MustCompile(`js-item-price.*?<`)
+	imagerx1 := regexp.MustCompile("image-frame-cover.*?<div")
+	imagerx2 := regexp.MustCompile(`src="(.*?)"`)
 
-	pricerx, err := regexp.Compile(`js-item-price.*?<`)
-	if err != nil {
-		return nil, err
-	}
-
-	imagerx1, err := regexp.Compile("image-frame-cover.*?<div")
-	if err != nil {
-		return nil, err
-	}
-	imagerx2, err := regexp.Compile(`src="(.*?)"`)
-	if err != nil {
-		return nil, err
-	}
-
+	// Start browser instance
 	ctx, cancel := chromedp.NewContext(context.Background())
-	err = chromedp.Run(ctx)
-	if err != nil {
+	if err := chromedp.Run(ctx); err != nil {
 		return nil, fmt.Errorf("error booting a browser: %w", err)
 	}
+
+	// TODO: remove panic
 	go func() {
 		<-chromedp.FromContext(ctx).Browser.LostConnection
-		fmt.Println("LOST!")
+		panic("browser is down")
 	}()
+
 	return &ChromeParser{
 		matchers: [4]*regexp.Regexp{titlerx, pricerx, imagerx1, imagerx2},
 		ctx:      ctx,

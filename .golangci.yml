@@ -15,4 +15,9 @@ linters:
     - prealloc
     - predeclared
     - wsl
-
+output:
+  format: json
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  sort-results: true

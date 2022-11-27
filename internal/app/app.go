@@ -94,7 +94,7 @@ func Bootstrap() error {
 	fmt.Println("telegram is connected")
 
 	exit := make(chan os.Signal)
-	signal.Notify(exit, syscall.SIGINT, syscall.SIGKILL)
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM)
 
 	// Gracefull shutdown
 	<-exit
