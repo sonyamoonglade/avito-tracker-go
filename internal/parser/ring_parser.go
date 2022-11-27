@@ -2,26 +2,35 @@ package parser
 
 import (
 	"fmt"
-	"parser/internal/timer"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"parser/internal/timer"
 )
 
 type RingParser struct {
 	// List of URLs to parse
-	targets []string
+	targets   []string
+	targetlen int32
+
 	// Keep track of what urls are targets. See RingParser.AddTarget
 	urls   map[string]struct{}
-	offset int
+	offset int32
 
 	// Protect data
-	mu *sync.Mutex
+	mu *sync.RWMutex
 	wg *sync.WaitGroup
 
 	parser Parser
+
 	// Control maximum time a single parsing process can take
 	timeout time.Duration
 	timer   timer.Timer
+
+	// 1 - running
+	// 0 - stopped
+	state uint32
 
 	out      chan *ParseResult
 	shutdown chan struct{}
@@ -30,28 +39,36 @@ type RingParser struct {
 func NewRingParser(parser Parser, timer timer.Timer, parsingTimeout time.Duration, queueLength int) *RingParser {
 	return &RingParser{
 		parser:   parser,
-		mu:       &sync.Mutex{},
-		wg:       new(sync.WaitGroup),
-		shutdown: make(chan struct{}),
-		offset:   0,
 		timer:    timer,
-		targets:  make([]string, 0),
-		urls:     make(map[string]struct{}),
 		timeout:  parsingTimeout,
+		offset:   0,
+		mu:       new(sync.RWMutex),
+		wg:       new(sync.WaitGroup),
+		targets:  make([]string, 0),
+		state:    1,
+		urls:     make(map[string]struct{}),
+		shutdown: make(chan struct{}),
 		out:      make(chan *ParseResult, queueLength),
 	}
 }
 
-// Run spawns a gorotine that performs a parsing within an interval
+// Run spawns a goroutine that performs a parsing within an interval
 func (rp *RingParser) Run(interval time.Duration) {
-	go rp.timer.Every(interval, rp.parse)
+	rp.timer.Every(interval, rp.parse)
 }
 
 func (rp *RingParser) Close() {
-	rp.timer.Stop()
-	// signal all parsing goroutines to end
+	// Set state to 'stopped'
+	atomic.StoreUint32(&rp.state, 0)
+
+	// Wait for all parsing goroutines to end
 	rp.wg.Wait()
+	// Signal that no more updates are sent
 	close(rp.out)
+
+	// Stop emitting intervals
+	rp.timer.Stop()
+
 }
 
 func (rp *RingParser) Out() <-chan *ParseResult {
@@ -59,9 +76,9 @@ func (rp *RingParser) Out() <-chan *ParseResult {
 }
 
 func (rp *RingParser) AddTarget(url string) {
-	rp.mu.Lock()
+	rp.mu.RLock()
 	_, ok := rp.urls[url]
-	rp.mu.Unlock()
+	rp.mu.RUnlock()
 
 	// URL is already being parsed
 	if ok {
@@ -74,33 +91,59 @@ func (rp *RingParser) AddTarget(url string) {
 	rp.urls[url] = struct{}{}
 	rp.mu.Unlock()
 
+	atomic.AddInt32(&rp.targetlen, 1)
 	fmt.Println("added: ", url)
 }
 
 func (rp *RingParser) parse() {
 
-	rp.mu.Lock()
-	targetlen := len(rp.targets)
+	targetlen := atomic.LoadInt32(&rp.targetlen)
 	if targetlen == 0 {
-		rp.mu.Unlock()
 		return
 	}
 
-	// Mutex is locked here
+	rp.mu.RLock()
 	url := rp.targets[rp.offset]
+	rp.mu.RUnlock()
 
 	mx := targetlen - 1
-	if rp.offset == mx {
-		rp.offset = 0
+	// rp.offset == mx
+	if atomic.LoadInt32(&rp.offset) == mx {
+		// rp.offset = 0
+		atomic.StoreInt32(&rp.offset, 0)
 	} else {
-		rp.offset += 1
+		// rp.offset += 1
+		atomic.AddInt32(&rp.offset, 1)
 	}
-	rp.mu.Unlock()
 
+	if !rp.checkState() {
+		return
+	}
+
+	// Access rp.parser there because otherwise it will Data Race
+	parser := rp.parser
 	rp.wg.Add(1)
 	go func() {
-		data := rp.parser.Parse(rp.timeout, url)
+		// rp.parser !!! DATA RACE
+		data := parser.Parse(rp.timeout, url)
+		if !rp.checkState() {
+			// Return gracefully
+			// Do not write on potentially closed rp.out channel
+			rp.wg.Done()
+			return
+		}
 		rp.out <- data
 		rp.wg.Done()
 	}()
+
+}
+
+func (rp *RingParser) checkState() bool {
+	// Check if RingParser.Close() has been called. See RingParser.Close
+	if atomic.LoadUint32(&rp.state) == 0 {
+		// Stopped
+		return false
+	}
+
+	return true
 }

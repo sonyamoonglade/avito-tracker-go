@@ -6,7 +6,6 @@ import (
 
 type AppTimer struct {
 	shutdown chan struct{}
-	t        *time.Ticker
 }
 
 func NewAppTimer() Timer {
@@ -16,23 +15,25 @@ func NewAppTimer() Timer {
 }
 
 func (at *AppTimer) Every(interval time.Duration, f func()) {
+	go func() {
+		emitter := time.NewTicker(interval)
+		for {
+			select {
+			// Exit emitting goroutine once reached shutdown state
+			case <-at.shutdown:
+				return
+			// Emit an action (call func)
+			case _, ok := <-emitter.C:
+				if !ok {
+					return
+				}
 
-	if at.t == nil {
-		at.t = time.NewTicker(interval)
-	}
-
-	for {
-		select {
-		case <-at.shutdown:
-			at.t.Stop()
-			return
-		case <-at.t.C:
-			f()
+				f()
+			}
 		}
-	}
+	}()
 }
 
 func (at *AppTimer) Stop() {
 	close(at.shutdown)
-	at.t.Stop()
 }

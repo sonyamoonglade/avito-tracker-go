@@ -1,10 +1,11 @@
 package parser
 
 import (
-	"parser/internal/timer"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"parser/internal/timer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -18,9 +19,8 @@ func (np *NoOpParser) Parse(timeout time.Duration, url string) *ParseResult {
 }
 
 func TestRingParser(t *testing.T) {
-	timer := timer.NewAppTimer()
-	ringParser := NewRingParser(new(NoOpParser), timer, time.Second*1, 1)
 	t.Run("test can add", func(t *testing.T) {
+		ringParser := NewRingParser(new(NoOpParser), timer.NewAppTimer(), time.Second*1 /* parsing timeout */, 1)
 		urls := []string{
 			"abcd",
 			"efgh",
@@ -30,7 +30,8 @@ func TestRingParser(t *testing.T) {
 		}
 
 		for _, url := range urls {
-			// Prevents from adding same url twice
+			// prevents from adding same url twice so no effect
+			// testing purposes...
 			ringParser.AddTarget(url)
 			ringParser.AddTarget(url)
 		}
@@ -39,32 +40,76 @@ func TestRingParser(t *testing.T) {
 	})
 
 	t.Run("test can run, read, gracefully close", func(t *testing.T) {
-		// Wait time is 2 seconds but parsing interval is 1 second.
-		// Therefore, expect 2 updates
+		t.Run("WITH extra 5ms for overhead (CHECK GRACEFUL CLOSE AND NO RACE CONDITIONS)", func(t *testing.T) {
+			ringParser := rpWithURLs()
+			// Add simple reader from output chan
+			var countUpdates int32
+			go func() {
+				for update := range ringParser.Out() {
+					require.EqualValues(t, mockParseResult, update)
+					atomic.AddInt32(&countUpdates, 1)
+				}
+			}()
 
-		// Add simple reader from output
-		var countUpdates int
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			for update := range ringParser.Out() {
-				t.Log(update)
-				require.EqualValues(t, mockParseResult, update)
-				countUpdates += 1
-			}
-			t.Log("done!\n")
-			wg.Done()
-		}()
+			// Spawns a goroutine under the hood
+			ringParser.Run(time.Second * 1 /* Parsing interval */)
 
-		time.Sleep(time.Microsecond)
+			// Sleep for abit longer than 2000ms(2s) because of some overhead
+			time.Sleep(time.Millisecond * 2005)
 
-		ringParser.Run(time.Second * 1 /* Interval */)
+			ringParser.Close()
+			// Can run two complete parsings.
+			// ringParser.Run has interval - 1s
+			// Time asleep - 2.005s =>
+			// Two complete parsings could be performed
+			require.Equal(t, int32(2) /* expected count updates */, atomic.LoadInt32(&countUpdates))
+		})
 
-		time.Sleep(time.Second * 2)
-		ringParser.Close()
+		t.Run("WITHOUT extra 5ms for overhead (CHECK GRACEFUL CLOSE AND NO RACE CONDITIONS)", func(t *testing.T) {
+			ringParser := rpWithURLs()
+			// Add simple reader from output chan
+			var countUpdates int32
+			go func() {
+				for update := range ringParser.Out() {
+					require.EqualValues(t, mockParseResult, update)
+					atomic.AddInt32(&countUpdates, 1)
+				}
+			}()
 
-		wg.Wait()
-		require.Equal(t, 2 /* expected count updates */, countUpdates)
+			// Spawns a goroutine under the hood
+			ringParser.Run(time.Second * 1 /* Parsing interval */)
+
+			// Sleep exactly two seconds (ringParser cant handle millisecond to millisecond parsing)
+			time.Sleep(time.Millisecond * 2000)
+
+			ringParser.Close()
+			// Can run two complete parsings.
+			// ringParser.Run has interval - 1s
+			// Time asleep - 2.000s =>
+			// One parsing can be performed.
+			// ringParser has safe concurrency model and prevents data races
+			require.Equal(t, int32(1) /* expected count updates */, atomic.LoadInt32(&countUpdates))
+		})
 	})
 
+}
+
+func rpWithURLs() *RingParser {
+
+	rp := NewRingParser(new(NoOpParser), timer.NewAppTimer(), time.Second*1 /* parsing timeout */, 1)
+	urls := []string{
+		"abcd",
+		"efgh",
+		"zxcv",
+		"fhdia",
+		"qiwnx",
+	}
+
+	for _, url := range urls {
+		// prevents from adding same url twice so no effect
+		// testing purposes...
+		rp.AddTarget(url)
+	}
+
+	return rp
 }
