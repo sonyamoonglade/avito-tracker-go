@@ -1,0 +1,20 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - typecheck
+    - unused
+    - bodyclose
+    - errname
+    - exhaustive
+    - gocritic
+    - goimports
+    - importas
+    - nakedret
+    - missspell
+    - noctx
+    - prealloc
+    - predeclared
+    - wsl
+
