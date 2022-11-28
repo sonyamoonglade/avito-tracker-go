@@ -16,19 +16,21 @@ type Advert struct {
 	title        string
 	currentPrice float64
 	lastPrice    float64
+	isParsed     bool
 }
 
-func NewAdvert(id, url, title string, currentPrice, lastPrice float64) *Advert {
+func NewAdvert(id, url, title string, currentPrice, lastPrice float64, isParsed bool) *Advert {
 	return &Advert{
 		AdvertID:     id,
 		url:          url,
 		title:        title,
 		currentPrice: currentPrice,
 		lastPrice:    lastPrice,
+		isParsed:     isParsed,
 	}
 }
 
-func AdvertFromURL(URL string) (*Advert, error) {
+func NewEmptyAdvert(URL string) (*Advert, error) {
 	if URL == "" {
 		return nil, ErrEmptyURL
 	}
@@ -39,6 +41,7 @@ func AdvertFromURL(URL string) (*Advert, error) {
 		title:        "",
 		currentPrice: 0.0,
 		lastPrice:    0.0,
+		isParsed:     false,
 	}, nil
 }
 
@@ -58,6 +61,10 @@ func (ad *Advert) Title() string {
 	return ad.title
 }
 
+func (ad *Advert) IsParsed() bool {
+	return ad.isParsed
+}
+
 func (ad *Advert) DidPriceChange(newPrice float64) bool {
 	return ad.currentPrice != newPrice
 }
@@ -70,12 +77,16 @@ func (ad *Advert) UpdateTitle(title string) {
 	ad.title = title
 }
 
+// Updates isParsed to TRUE
+func (ad *Advert) Parsed() {
+	ad.isParsed = true
+}
+
 func (ad *Advert) UpdatePrice(price float64) {
-	// Occurs if lastPrice is zero and currentPrice is updated
-	if ad.lastPrice == ad.currentPrice && ad.lastPrice == 0 {
+	// Advert is just created
+	if ad.lastPrice == 0 {
 		ad.lastPrice = price
 		ad.currentPrice = price
-
 		return
 	}
 

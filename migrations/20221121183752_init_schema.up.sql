@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS "adverts"(
     "url" varchar(255) UNIQUE NOT NULL,
     "title" varchar(255) NOT NULL DEFAULT '',
     "last_price" REAL NOT NULL DEFAULT 0.0,
-    "current_price" REAL NOT NULL DEFAULT 0.0
+    "current_price" REAL NOT NULL DEFAULT 0.0,
+    "is_parsed" BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS "subscribers"(

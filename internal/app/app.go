@@ -13,8 +13,10 @@ import (
 	"parser/internal/notify"
 	"parser/internal/parser"
 	"parser/internal/postgres"
+	"parser/internal/proxy"
 	"parser/internal/telegram"
 	"parser/internal/timer"
+	"parser/internal/urlcache"
 	"syscall"
 	"time"
 )
@@ -50,6 +52,7 @@ func Bootstrap() error {
 		ParsingTimeout: cfg.Parsing.Timeout * time.Second,
 		Timer:          new(timer.AppTimer),
 		OutChanBuff:    cfg.Parsing.ChanBuff,
+		UrlCache:       urlcache.NewUrlCache(time.Minute * 5 /* cache TTL */), // TODO: config
 	})
 
 	repositories := repositories.NewRepositories(pg)
@@ -64,16 +67,18 @@ func Bootstrap() error {
 	ringParser.Run(cfg.Parsing.Interval)
 
 	updateHandler := services.SubscriptionService.GetUpdateHandler()
-	proxy := parser.NewProxy(ringParser.Out(), updateHandler, func(err error) {
+	proxy := proxy.NewProxy(ringParser.Out(), updateHandler, func(err error) /* err handl. callback */ {
 		// Placeholder
+		// TODO: replace with proper error handler
 		fmt.Printf("proxy error: %v\n", err)
 	})
+	// Start reading from ringParser output and executing updateHandler
 	go proxy.Run()
 
 	server := http.NewHTTPServer(&http.ServerConfig{
 		Router:       http.NewMuxRouter(),
-		Addr:         cfg.Net.Addr,
 		Services:     services,
+		Addr:         cfg.Net.Addr,
 		WriteTimeout: cfg.Net.RWTimeout,
 		ReadTimeout:  cfg.Net.RWTimeout,
 	})

@@ -12,12 +12,14 @@ import (
 	"time"
 )
 
+type UpdateHandler func(result *parser.ParseResult) error
+
 type SubscriptionService interface {
 	NewSubscription(ctx context.Context, dto *dto.SubscribeRequest) error
 
 	NotifySubscribers(ctx context.Context, ad *domain.Advert) error
 
-	GetUpdateHandler() parser.UpdateHandler
+	GetUpdateHandler() UpdateHandler
 
 	GetURLFetcher() func(ctx context.Context) ([]string, error)
 }
@@ -64,7 +66,7 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 	// No such advert so create one
 	if advert == nil {
 
-		newAdvert, err := domain.AdvertFromURL(dto.AdvertURL)
+		newAdvert, err := domain.NewEmptyAdvert(dto.AdvertURL)
 		if err != nil {
 			return errors.WrapDomain(err)
 		}
@@ -144,7 +146,7 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.
 	return nil
 }
 
-func (s *subscriptionService) GetUpdateHandler() parser.UpdateHandler {
+func (s *subscriptionService) GetUpdateHandler() UpdateHandler {
 	return s.handleUpdate
 }
 
@@ -176,24 +178,40 @@ func (s *subscriptionService) handleUpdate(update *parser.ParseResult) error {
 		advert.UpdatePrice(update.Price())
 	}
 
-	fmt.Printf("update status: price-%t; title-%t\n", priceChanged, titleChanged)
+	fmt.Printf("update status:\n\tprice-[%t]\t\ntitle-[%t]\n", priceChanged, titleChanged)
 
 	// If nothing has changed - ignore
 	if !priceChanged && !titleChanged {
 		return nil
 	}
 
-	// Update an advert
+	// Important note:
+	// If advert is parsed for the first time (lastprice=0, currentprice=0)
+	// Program will notify change of the price from 0(currentprice) to parsed(e.g. 800).
+	// To avoid that: check if it's parsing for the first time.
+	// Only do an update in storage (advertRepo.Update).
+	// Do not notify.
+	// Duplicate advertRepo.Update is mandatory for calling advert.Parsed()
+	if !advert.IsParsed() {
+		advert.Parsed()
+
+		err = s.advertRepo.Update(ctx, advert)
+		if err != nil {
+			return errors.WrapInternal(err, "subscriptionService.handleUpdate.Update")
+		}
+
+		return nil
+	}
+
 	err = s.advertRepo.Update(ctx, advert)
 	if err != nil {
 		return errors.WrapInternal(err, "subscriptionService.handleUpdate.Update")
 	}
 
-	// Notify
 	err = s.NotifySubscribers(context.Background(), advert)
 	if err != nil {
-		// Calling service method that could returns an ApplicationError so chain it
-		// to receive full stacktrace
+		// NotifySubscribers is method that returns an ApplicationError
+		// so call errors.ChainInternal it for full errortrace
 		return errors.ChainInternal(err, "handleUpdate.NotifySubscribers")
 	}
 
