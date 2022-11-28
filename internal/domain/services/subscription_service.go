@@ -28,19 +28,19 @@ type subscriptionService struct {
 	subscriptionRepo repositories.SubscriberRepository
 	advertRepo       repositories.AdvertRepository
 	notifier         notify.Notifier
-	ringParser       *parser.RingParser
+	targetAdder      parser.TargetAdder
 }
 
 func NewSubscriptionService(
 	subscriptionRepo repositories.SubscriberRepository,
 	advertRepo repositories.AdvertRepository,
 	notifier notify.Notifier,
-	ringParser *parser.RingParser) SubscriptionService {
+	targetAdder parser.TargetAdder) SubscriptionService {
 	return &subscriptionService{
 		subscriptionRepo: subscriptionRepo,
 		advertRepo:       advertRepo,
 		notifier:         notifier,
-		ringParser:       ringParser,
+		targetAdder:      targetAdder,
 	}
 }
 
@@ -115,7 +115,7 @@ func (s *subscriptionService) NewSubscription(ctx context.Context, dto *dto.Subs
 
 	}
 
-	s.ringParser.AddTarget(advert.URL())
+	s.targetAdder.AddTarget(advert.URL())
 	return nil
 }
 
@@ -127,7 +127,6 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.
 	}
 
 	for _, subscriber := range subscribers {
-
 		// hardcoded for now
 		msg := fmt.Sprintf("Hey!\n%s is updated!\nNew price: %.2f\nPrev price: %.2f\n", ad.Title(), ad.CurrentPrice(), ad.LastPrice())
 
@@ -140,7 +139,6 @@ func (s *subscriptionService) NotifySubscribers(ctx context.Context, ad *domain.
 			// TODO: maybe some queue??
 			return errors.WrapInternal(err, "subscriptionService.NotifySubscribers.Notify")
 		}
-
 	}
 
 	return nil

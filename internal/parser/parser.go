@@ -13,6 +13,10 @@ type Parser interface {
 	Parse(timeout time.Duration, url string) *ParseResult
 }
 
+type TargetAdder interface {
+	AddTarget(url string)
+}
+
 type ParseResult struct {
 	url string
 
