@@ -19,14 +19,17 @@ type ParseResult struct {
 	title string
 	price float64
 	err   error
+
+	// original html that was parsed
+	raw *string
 }
 
 func NewParseResult(title string, price float64, URL string) *ParseResult {
-	return &ParseResult{title: title, price: price, url: URL, err: nil}
+	return &ParseResult{title: title, price: price, url: URL, err: nil, raw: nil}
 }
 
-func NewParseResultWithError(err error) *ParseResult {
-	return &ParseResult{title: "", price: 0.0, err: err}
+func NewParseResultWithError(err error, raw *string) *ParseResult {
+	return &ParseResult{title: "", price: 0.0, err: err, raw: raw}
 }
 func (pr *ParseResult) Title() string {
 	return pr.title
@@ -42,4 +45,8 @@ func (pr *ParseResult) Err() error {
 
 func (pr *ParseResult) URL() string {
 	return pr.url
+}
+
+func (pr *ParseResult) Raw() *string {
+	return pr.raw
 }

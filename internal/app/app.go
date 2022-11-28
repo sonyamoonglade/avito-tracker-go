@@ -2,10 +2,11 @@ package app
 
 import (
 	"context"
-	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"parser/internal/config"
 	"parser/internal/domain/repositories"
 	"parser/internal/domain/services"
 	"parser/internal/http"
@@ -23,30 +24,33 @@ func Bootstrap() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	// TODO: get from config
-	connString := os.Getenv("DB_URL")
-	// move to config
-	if connString == "" {
-		return errors.New("DB_URL missing")
-	}
-	pg, err := postgres.FromConnectionString(ctx, connString)
-	if err != nil {
-		return err
-	}
-	fmt.Println("database has connected")
+	configPath, debug := parseFlags()
 
-	telegram := telegram.NewTelegram()
+	// Read config
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+
+	pg, err := postgres.FromConnectionString(ctx, cfg.Database.Url)
+	if err != nil {
+		return fmt.Errorf("postgres: %w", err)
+	}
+
+	telegram := telegram.NewTelegram(debug)
 	telegramNotifier := notify.NewTelegramNotifier(telegram)
 
 	chromedpParser, err := parser.NewChromeParser()
 	if err != nil {
-		return err
+		return fmt.Errorf("chromedp-parser: %w", err)
 	}
 
-	// TODO: move to config
-	waitingqLen := 10
-	parsingTimeout := time.Second * 10
-	ringParser := parser.NewRingParser(chromedpParser, new(timer.AppTimer), parsingTimeout, waitingqLen)
+	ringParser := parser.NewRingParser(&parser.RingParserOptions{
+		Parser:         chromedpParser,
+		ParsingTimeout: cfg.Parsing.Timeout * time.Second,
+		Timer:          new(timer.AppTimer),
+		OutChanBuff:    cfg.Parsing.ChanBuff,
+	})
 
 	repositories := repositories.NewRepositories(pg)
 	services := services.NewServices(repositories, telegramNotifier, ringParser)
@@ -54,12 +58,10 @@ func Bootstrap() error {
 	// Adds all URLs for parsing to ringParser
 	fetcher := services.SubscriptionService.GetURLFetcher()
 	if err := addInitialUrls(ctx, ringParser, fetcher); err != nil {
-		return err
+		return fmt.Errorf("add initial urls: %w", err)
 	}
 
-	// TODO: get timeout from config
-	parsingInterval := time.Second * 20
-	ringParser.Run(parsingInterval)
+	ringParser.Run(cfg.Parsing.Interval)
 
 	updateHandler := services.SubscriptionService.GetUpdateHandler()
 	proxy := parser.NewProxy(ringParser.Out(), updateHandler, func(err error) {
@@ -68,13 +70,12 @@ func Bootstrap() error {
 	})
 	go proxy.Run()
 
-	// TODO: introduce defaults for timeout and config..
 	server := http.NewHTTPServer(&http.ServerConfig{
 		Router:       http.NewMuxRouter(),
-		Addr:         "127.0.0.1:8000",
+		Addr:         cfg.Net.Addr,
 		Services:     services,
-		WriteTimeout: time.Second * 10,
-		ReadTimeout:  time.Second * 10,
+		WriteTimeout: cfg.Net.RWTimeout,
+		ReadTimeout:  cfg.Net.RWTimeout,
 	})
 
 	go func() {
@@ -82,16 +83,14 @@ func Bootstrap() error {
 			panic(fmt.Sprintf("server unable to bootstrap: %v\n", err))
 		}
 	}()
-	fmt.Println("http server is up")
 
-	// TODO: get from config
-	token := os.Getenv("BOT_TOKEN")
+	// Avoid data race
+	token := cfg.Telegram.Token
 	go func() {
 		if err := telegram.Connect(token); err != nil {
 			panic(fmt.Sprintf("unable to connect to telegram: %v\n", err))
 		}
 	}()
-	fmt.Println("telegram is connected")
 
 	exit := make(chan os.Signal)
 	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM)
@@ -111,8 +110,6 @@ func Bootstrap() error {
 	pg.Close()
 	telegram.Close()
 
-	fmt.Println("shutdown gracefully")
-
 	return nil
 }
 
@@ -128,4 +125,17 @@ func addInitialUrls(ctx context.Context, ringParser *parser.RingParser, fetcher 
 	}
 
 	return nil
+}
+
+func parseFlags() (string, bool) {
+	configPath := flag.String("config", "", "path to config.yaml")
+	debug := flag.Bool("debug", false, "set debug mode (more logging)")
+
+	flag.Parse()
+
+	if *configPath == "" {
+		panic("missing config path. Use --config")
+	}
+
+	return *configPath, *debug
 }

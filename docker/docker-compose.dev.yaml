@@ -8,6 +8,7 @@ services:
     environment:
        - DB_URL
        - BOT_TOKEN
+       - ADDR
     volumes:
       - ../:/app
     ports:

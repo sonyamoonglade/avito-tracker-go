@@ -26,11 +26,13 @@ type Telegram interface {
 
 type telegram struct {
 	client *tg.BotAPI
+	debug  bool
 }
 
-func NewTelegram() Telegram {
+func NewTelegram(debug bool) Telegram {
 	return &telegram{
 		client: nil,
+		debug:  debug,
 	}
 }
 
@@ -43,14 +45,13 @@ func (t *telegram) Connect(token string) error {
 	if err != nil {
 		return fmt.Errorf("unable to connect: %w", err)
 	}
-	bot.Debug = true
 
-	// todo: custom timeout
+	bot.Debug = t.debug
+	t.client = bot
+
 	updates := bot.GetUpdatesChan(tg.UpdateConfig{
 		Timeout: pollTimeout,
 	})
-
-	t.client = bot
 
 	for update := range updates {
 		fmt.Printf("ID: %d\n", update.SentFrom().ID)

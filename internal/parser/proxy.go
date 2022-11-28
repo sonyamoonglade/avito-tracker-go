@@ -28,6 +28,10 @@ func (p *Proxy) Run() {
 		fmt.Printf("proxy rsv: %+v\n", update)
 		// Parsing result occured
 		if err := update.Err(); err != nil {
+			// Report parsed text on which error has occured
+			if goerrors.Is(err, ErrURLUnavailable) {
+				p.Report(update.Raw())
+			}
 			p.onError(err)
 			continue
 		}
@@ -43,4 +47,11 @@ func (p *Proxy) Run() {
 			p.onError(err)
 		}
 	}
+}
+
+// Report should be called when ErrURLUnavailable occurs.
+// Mainly for debugging purposes
+func (p *Proxy) Report(text *string) {
+	// TODO: logger
+	fmt.Printf("err: %s occured with: \n\t%s\n", ErrURLUnavailable.Error(), *text)
 }

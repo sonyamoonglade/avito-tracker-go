@@ -1,0 +1,8 @@
+net:
+  rw_timeout: 10 # seconds
+
+parsing:
+  interval: 20 # seconds
+  timeout: 20 # seconds
+  chan_buff: 2 # size of queue channel
+

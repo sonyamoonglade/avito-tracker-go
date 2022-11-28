@@ -9,6 +9,14 @@ import (
 	"parser/internal/timer"
 )
 
+type RingParserOptions struct {
+	Parser         Parser
+	ParsingTimeout time.Duration
+	Timer          timer.Timer
+	// Buffer length of .Out() chan
+	OutChanBuff int32
+}
+
 type RingParser struct {
 	// List of URLs to parse
 	targets   []string
@@ -31,17 +39,17 @@ type RingParser struct {
 	shutdown chan struct{}
 }
 
-func NewRingParser(parser Parser, timer timer.Timer, parsingTimeout time.Duration, queueLength int) *RingParser {
+func NewRingParser(opts *RingParserOptions) *RingParser {
 	return &RingParser{
 		offset:   0,
-		parser:   parser,
-		timer:    timer,
-		timeout:  parsingTimeout,
+		parser:   opts.Parser,
+		timer:    opts.Timer,
+		timeout:  opts.ParsingTimeout,
 		mu:       new(sync.RWMutex),
 		targets:  make([]string, 0),
 		urls:     make(map[string]struct{}),
 		shutdown: make(chan struct{}),
-		out:      make(chan *ParseResult, queueLength),
+		out:      make(chan *ParseResult, opts.OutChanBuff),
 	}
 }
 

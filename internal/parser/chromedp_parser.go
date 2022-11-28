@@ -45,9 +45,10 @@ func NewChromeParser() (*ChromeParser, error) {
 	}, nil
 }
 
+// TODO: find better way to signal for ErrURLUnavailable
+// Current solution is very side-effectiveish and not clear!!
 func (p *ChromeParser) Parse(timeout time.Duration, url string) *ParseResult {
 	var html string
-
 	// get rid of somehow
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
@@ -68,17 +69,21 @@ func (p *ChromeParser) Parse(timeout time.Duration, url string) *ParseResult {
 			return nil
 		}),
 	)
+	if err != nil {
+		err = fmt.Errorf("parser: intenal: %w", err)
+		return NewParseResultWithError(err, &html)
+	}
 
 	title, err := p.parseTitle(&html)
 	if err != nil {
 		err = fmt.Errorf("parser: title parsing error: %w", err)
-		return NewParseResultWithError(err)
+		return NewParseResultWithError(err, &html)
 	}
 
 	price, err := p.parsePrice(&html)
 	if err != nil {
 		err = fmt.Errorf("parser: price parsing error: %w", err)
-		return NewParseResultWithError(err)
+		return NewParseResultWithError(err, &html)
 	}
 
 	return NewParseResult(title, price, url)

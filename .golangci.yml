@@ -14,7 +14,10 @@ linters:
     - noctx
     - prealloc
     - predeclared
-    - wsl
+
+disable:
+  - wsl
+
 output:
   format: json
   print-issued-lines: true
