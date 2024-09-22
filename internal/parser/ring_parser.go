@@ -124,12 +124,10 @@ func (rp *RingParser) parse() {
 	// Get url to parse
 	rp.mu.RLock()
 	url := rp.targets[rp.offset]
-	// Prevent data race
-	urlcache := rp.urlCache
 	rp.mu.RUnlock()
 
 	// Beforehand check if url should be parsed
-	should := urlcache.ShouldParse(url)
+	should := rp.urlCache.ShouldParse(url)
 	if !should {
 		fmt.Println("hitting cache")
 		return
